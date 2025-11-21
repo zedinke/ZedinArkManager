@@ -1,0 +1,4 @@
+"""
+Funkcionális modulok - Business logika
+"""
+

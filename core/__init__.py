@@ -1,0 +1,4 @@
+"""
+Core modulok - Alapvető szolgáltatások
+"""
+
