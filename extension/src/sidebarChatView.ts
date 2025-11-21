@@ -179,17 +179,45 @@ ASK MÓD: Kérdés-válasz mód.
 
     private async handleAgentMode(text: string, systemPrompt: string): Promise<string> {
         // Agent mód: teljes autonómia
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
-            throw new Error('No workspace folder found');
+        // Először próbáljuk a workspace folder-t
+        let workspacePath: string | undefined;
+        let workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        
+        if (workspaceFolder) {
+            workspacePath = workspaceFolder.uri.fsPath;
+        } else {
+            // Ha nincs workspace folder, próbáljuk az aktív fájl mappáját
+            const activeEditor = vscode.window.activeTextEditor;
+            if (activeEditor) {
+                const activeFile = activeEditor.document.uri;
+                if (activeFile.scheme === 'file') {
+                    workspacePath = path.dirname(activeFile.fsPath);
+                }
+            }
+        }
+
+        // Ha még mindig nincs, próbáljuk a megnyitott fájlokat
+        if (!workspacePath) {
+            const documents = vscode.workspace.textDocuments;
+            if (documents.length > 0) {
+                const firstDoc = documents[0].uri;
+                if (firstDoc.scheme === 'file') {
+                    workspacePath = path.dirname(firstDoc.fsPath);
+                }
+            }
+        }
+
+        if (!workspacePath) {
+            throw new Error('Nincs workspace mappa megnyitva! Kérlek, nyisd meg a projekt mappát VS Code-ban: File → Open Folder...');
         }
 
         // Projekt struktúra lekérése
-        const projectStructure = await this.getProjectStructure(workspaceFolder.uri.fsPath);
+        const projectStructure = await this.getProjectStructure(workspacePath);
 
         // Agent prompt
         const agentPrompt = `${systemPrompt}
 
+Projekt mappa: ${workspacePath}
 Projekt struktúra:
 ${JSON.stringify(projectStructure, null, 2)}
 
@@ -201,7 +229,7 @@ Ha fájlokat kell létrehozni vagy módosítani, használd a file műveleteket.`
         const response = await this.api.chat(agentPrompt);
         
         // Agent válaszban lehetnek fájl műveletek
-        await this.executeAgentActions(response, workspaceFolder.uri.fsPath);
+        await this.executeAgentActions(response, workspacePath);
 
         return response;
     }
@@ -463,10 +491,31 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
     private async handleReadFile(filePath: string) {
         if (!this._view) return;
 
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) return;
+        // Ugyanaz a logika, mint handleAgentMode-ban
+        let workspacePath: string | undefined;
+        let workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        
+        if (workspaceFolder) {
+            workspacePath = workspaceFolder.uri.fsPath;
+        } else {
+            const activeEditor = vscode.window.activeTextEditor;
+            if (activeEditor) {
+                const activeFile = activeEditor.document.uri;
+                if (activeFile.scheme === 'file') {
+                    workspacePath = path.dirname(activeFile.fsPath);
+                }
+            }
+        }
 
-        const fullPath = path.join(workspaceFolder.uri.fsPath, filePath);
+        if (!workspacePath) {
+            this._view.webview.postMessage({
+                command: 'error',
+                error: 'Nincs workspace mappa megnyitva!'
+            });
+            return;
+        }
+
+        const fullPath = path.join(workspacePath, filePath);
         
         try {
             const content = fs.readFileSync(fullPath, 'utf-8');
