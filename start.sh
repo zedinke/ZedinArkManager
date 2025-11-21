@@ -67,5 +67,5 @@ echo ""
 echo "========================================="
 echo ""
 
-# Szerver indítása
-python main.py
+# Szerver indítása (reload nélkül - jobb teljesítmény)
+python main.py --no-reload

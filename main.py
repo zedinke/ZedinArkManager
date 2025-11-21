@@ -753,11 +753,15 @@ async def get_available_gpu(api_key: Optional[str] = Security(verify_api_key)):
 
 if __name__ == "__main__":
     import sys
-    use_reload = "--no-reload" not in sys.argv
+    # Reload csak fejlesztéshez, éles környezetben kikapcsolva
+    # Kikapcsolás: python main.py --no-reload
+    # Vagy környezeti változóval: export RELOAD=false
+    use_reload = os.getenv("RELOAD", "false").lower() == "true" and "--no-reload" not in sys.argv
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=use_reload
+        reload=use_reload,
+        reload_excludes=["*.pyc", "__pycache__", "*.log", "data/*", "logs/*", "projects/*", ".git/*"]
     )
 
