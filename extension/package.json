@@ -65,10 +65,10 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run compile && npm install --production",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "npx @vscode/vsce package"
+    "package": "npx @vscode/vsce package --no-yarn"
   },
   "devDependencies": {
     "@types/vscode": "^1.80.0",

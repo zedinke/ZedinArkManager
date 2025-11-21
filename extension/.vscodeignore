@@ -6,5 +6,9 @@ tsconfig.json
 **/*.map
 **/*.ts
 !out/**/*.js
-node_modules/**
+# Include node_modules for production dependencies (axios)
+node_modules/@types/**
+node_modules/.bin/**
+node_modules/typescript/**
+node_modules/@vscode/**
 
