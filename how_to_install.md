@@ -1,30 +1,31 @@
-# 🐧 Linux telepítési útmutató
+# 🐧 Linux telepítési útmutató - Lépésről lépésre
 
-## 📋 Előfeltételek
+## 📋 Előfeltételek ellenőrzése
 
-### 1. Rendszer követelmények
-
-- **OS**: Debian 12 (vagy hasonló Linux disztribúció)
-- **Python**: 3.8 vagy újabb
-- **RAM**: Minimum 8GB (ajánlott 16GB+)
-- **Tárhely**: Minimum 10GB szabad hely
-
-### 2. Rendszerfrissítés
+### 1. lépés: Rendszerfrissítés
 
 ```bash
 sudo apt update
 sudo apt upgrade -y
 ```
 
-### 3. Python telepítése (ha nincs)
+### 2. lépés: Python telepítése/ellenőrzése
 
 ```bash
+# Python verzió ellenőrzése
+python3 --version
+
+# Ha nincs telepítve Python 3.8 vagy újabb:
 sudo apt install python3 python3-pip python3-venv -y
 ```
 
-### 4. Git telepítése (ha nincs)
+### 3. lépés: Git telepítése/ellenőrzése
 
 ```bash
+# Git ellenőrzése
+git --version
+
+# Ha nincs telepítve:
 sudo apt install git -y
 ```
 
@@ -35,62 +36,99 @@ sudo apt install git -y
 ### 1. lépés: Repository klónozása
 
 ```bash
+# Klónozd le a repository-t
 git clone https://github.com/zedinke/ZedinArkManager.git
+
+# Lépj be a mappába
 cd ZedinArkManager
 ```
 
-### 2. lépés: Automatikus telepítés
+### 2. lépés: Automatikus telepítő futtatása
 
 ```bash
+# Telepítő script futtathatóvá tétele
 chmod +x installers/install.sh
+
+# Telepítő futtatása
 ./installers/install.sh
 ```
 
-A script:
-- Létrehozza a szükséges könyvtárakat
-- Telepíti a Python függőségeket
-- Ellenőrzi az Ollama telepítését
-- Létrehozza a `.env` fájlt
+**Mit csinál a telepítő?**
+- ✅ Létrehozza a szükséges mappákat (`logs`, `data`, `projects`)
+- ✅ Telepíti a Python függőségeket
+- ✅ Ellenőrzi az Ollama telepítését
+- ✅ Létrehozza a `.env` konfigurációs fájlt
 
 ### 3. lépés: Ollama telepítése
 
-Ha még nincs telepítve az Ollama:
+**Ha még nincs telepítve az Ollama:**
 
 ```bash
+# Ollama telepítése
 curl https://ollama.com/install.sh | sh
 ```
 
-Vagy manuálisan:
+**Ellenőrzés:**
+
 ```bash
-curl -fsSL https://ollama.com/install.sh | sh
+# Ollama verzió ellenőrzése
+ollama --version
 ```
 
-### 4. lépés: Modell telepítése
+### 4. lépés: Ollama indítása
+
+**Opció 1: Hátérben indítás (ajánlott)**
 
 ```bash
-# Ollama indítása (ha még nem fut)
-ollama serve &
+# Ollama indítása hátérben
+nohup ollama serve > logs/ollama.log 2>&1 &
 
-# Modell letöltése (ez időbe telhet, ~4-5GB)
+# Ellenőrzés, hogy fut-e
+curl http://localhost:11434/api/tags
+```
+
+**Opció 2: Előtérben indítás**
+
+```bash
+# Ollama indítása előtérben (Ctrl+C-vel leállítható)
+ollama serve
+```
+
+### 5. lépés: Modell telepítése
+
+```bash
+# A magyarul jól beszélő modell letöltése (~4-5GB, ez időbe telhet)
 ollama pull llama3.1:8b
 ```
 
-Egyéb modellek:
+**Alternatív modellek (ha szükséges):**
+
 ```bash
-ollama pull codellama       # Code-specific modell
+ollama pull codellama       # Kód-generálásra optimalizált
 ollama pull mistral         # Kisebb, gyorsabb modell
-ollama pull deepseek-coder  # Code generation
+ollama pull deepseek-coder  # Code generation modell
 ```
 
-### 5. lépés: Környezeti változók beállítása
+**Ellenőrzés, hogy telepítve van-e:**
 
-Szerkeszd a `.env` fájlt (ha szükséges):
+```bash
+# Telepített modellek listázása
+ollama list
+
+# Vagy
+curl http://localhost:11434/api/tags
+```
+
+### 6. lépés: Környezeti változók beállítása
+
+**Szerkeszd a `.env` fájlt (ha szükséges):**
 
 ```bash
 nano .env
 ```
 
-Példa beállítások:
+**Alapértelmezett értékek (általában ezek jók):**
+
 ```env
 # Ollama beállítások
 OLLAMA_URL=http://localhost:11434
@@ -99,122 +137,48 @@ DEFAULT_MODEL=llama3.1:8b
 # Projekt beállítások
 PROJECT_BASE_PATH=.
 
-# Optimalizáció (opcionális)
-OLLAMA_NUM_GPU_LAYERS=35    # GPU rétegek száma (ha van GPU)
-OLLAMA_NUM_THREADS=32       # CPU szálak száma (32 maghoz)
+# Optimalizáció (opcionális - a te szerveredhez):
+OLLAMA_NUM_GPU_LAYERS=      # Ha van GPU, pl: 35
+OLLAMA_NUM_THREADS=32       # 32 maghoz = 32 szál
 ```
 
-### 6. lépés: Rendszer indítása
-
-```bash
-chmod +x start.sh
-./start.sh
-```
-
-A script:
-- Ellenőrzi az Ollama futását
-- Ellenőrzi a modellek telepítését
-- Indítja a FastAPI szervert
-
----
-
-## 🔧 Manuális telepítés (ha az automatikus nem működik)
-
-### Python függőségek telepítése
-
-```bash
-pip3 install --upgrade pip
-pip3 install -r installers/requirements.txt
-```
-
-### Könyvtárak létrehozása
-
-```bash
-mkdir -p logs data/cache data/memory projects
-```
-
-### Környezeti változók beállítása
+**Vagy környezeti változóként (ha nem használod a .env fájlt):**
 
 ```bash
 export OLLAMA_URL="http://localhost:11434"
 export DEFAULT_MODEL="llama3.1:8b"
 export PROJECT_BASE_PATH="."
+export OLLAMA_NUM_THREADS="32"
 ```
 
-Vagy állandó beállításhoz a `.env` fájlban.
+### 7. lépés: Rendszer indítása
 
----
-
-## 🏃 Rendszer indítása
-
-### Opció 1: Automatikus indító script (ajánlott)
+**Indító script használata (ajánlott):**
 
 ```bash
+# Indító script futtathatóvá tétele
+chmod +x start.sh
+
+# Rendszer indítása
 ./start.sh
 ```
 
-### Opció 2: Manuális indítás
+**Mit csinál az indító script?**
+- ✅ Ellenőrzi, hogy az Ollama fut-e
+- ✅ Ellenőrzi a modellek telepítését (ha nincs, kérdezi, hogy telepítse-e)
+- ✅ Ellenőrzi a Python függőségeket
+- ✅ Betölti a környezeti változókat (`.env` fájlból)
+- ✅ Indítja a FastAPI szervert
 
-#### Ollama indítása hátérben:
+### 8. lépés: Ellenőrzés, hogy minden működik
 
-```bash
-nohup ollama serve > logs/ollama.log 2>&1 &
-```
-
-#### FastAPI szerver indítása:
-
-```bash
-python3 main.py
-```
-
-Vagy uvicorn-nel közvetlenül:
-
-```bash
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-### Opció 3: Systemd szolgáltatásként (éles környezet)
-
-Létrehozni egy `/etc/systemd/system/zedinarkmanager.service` fájlt:
-
-```ini
-[Unit]
-Description=ZedinArkManager API Server
-After=network.target
-
-[Service]
-Type=simple
-User=your-user
-WorkingDirectory=/path/to/ZedinArkManager
-EnvironmentFile=/path/to/ZedinArkManager/.env
-ExecStart=/usr/bin/python3 /path/to/ZedinArkManager/main.py
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Aktíválás:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable zedinarkmanager
-sudo systemctl start zedinarkmanager
-sudo systemctl status zedinarkmanager
-```
-
----
-
-## ✅ Ellenőrzés
-
-### 1. Health check
+**1. Health check (terminálból):**
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-Válasz példa:
+**Várható válasz:**
 ```json
 {
   "status": "healthy",
@@ -224,17 +188,120 @@ Válasz példa:
 }
 ```
 
-### 2. API dokumentáció
+**2. API dokumentáció megnyitása (böngészőben):**
 
-Nyisd meg böngészőben:
 ```
 http://localhost:8000/docs
 ```
 
-### 3. Telepített modellek listázása
+**3. Telepített modellek ellenőrzése:**
 
 ```bash
 curl http://localhost:8000/api/models
+```
+
+---
+
+## ✅ Telepítés kész!
+
+Ha minden lépés sikeres volt, a rendszer most fut és elérhető:
+
+- **API**: http://localhost:8000
+- **API Dokumentáció**: http://localhost:8000/docs
+- **Health Check**: http://localhost:8000/health
+
+---
+
+## 🔧 Manuális telepítés (ha az automatikus nem működik)
+
+### 1. Python függőségek telepítése
+
+```bash
+# pip frissítése
+pip3 install --upgrade pip
+
+# Függőségek telepítése
+pip3 install -r installers/requirements.txt
+```
+
+### 2. Mappák létrehozása
+
+```bash
+mkdir -p logs data/cache data/memory projects
+```
+
+### 3. FastAPI szerver indítása (manuálisan)
+
+```bash
+# Közvetlenül Python-nal
+python3 main.py
+
+# Vagy uvicorn-nel
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+---
+
+## 🏃 Rendszer indítása (későbbi használat)
+
+### Gyors indítás
+
+```bash
+./start.sh
+```
+
+### Hátérben indítás
+
+```bash
+# Ollama hátérben (ha még nem fut)
+nohup ollama serve > logs/ollama.log 2>&1 &
+
+# FastAPI hátérben
+nohup python3 main.py > logs/app.log 2>&1 &
+```
+
+### Systemd szolgáltatásként (éles környezet)
+
+**1. Szolgáltatás fájl létrehozása:**
+
+```bash
+sudo nano /etc/systemd/system/zedinarkmanager.service
+```
+
+**2. Tartalom:**
+
+```ini
+[Unit]
+Description=ZedinArkManager API Server
+After=network.target
+
+[Service]
+Type=simple
+User=your-username
+WorkingDirectory=/home/your-username/ZedinArkManager
+EnvironmentFile=/home/your-username/ZedinArkManager/.env
+ExecStart=/usr/bin/python3 /home/your-username/ZedinArkManager/main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**3. Szolgáltatás aktiválása:**
+
+```bash
+# Systemd újratöltése
+sudo systemctl daemon-reload
+
+# Szolgáltatás engedélyezése (indulás rendszerindításkor)
+sudo systemctl enable zedinarkmanager
+
+# Szolgáltatás indítása
+sudo systemctl start zedinarkmanager
+
+# Állapot ellenőrzése
+sudo systemctl status zedinarkmanager
 ```
 
 ---
@@ -247,82 +314,103 @@ curl http://localhost:8000/api/models
 # Ellenőrzés
 curl http://localhost:11434/api/tags
 
-# Indítás
+# Ha nem fut, indítsd el:
 ollama serve
 
-# Logok ellenőrzése
-tail -f logs/ollama.log
+# Vagy hátérben:
+nohup ollama serve > logs/ollama.log 2>&1 &
+```
+
+### Ollama kapcsolati hiba
+
+```bash
+# Ellenőrizd, hogy az Ollama fut-e
+ps aux | grep ollama
+
+# Ha nem fut, indítsd el
+ollama serve &
+
+# Várj 2-3 másodpercet, majd próbáld újra
+sleep 3
+curl http://localhost:11434/api/tags
+```
+
+### Modell nincs telepítve
+
+```bash
+# Modell telepítése
+ollama pull llama3.1:8b
+
+# Ellenőrzés
+ollama list
 ```
 
 ### Python függőségek hiányoznak
 
 ```bash
+# Függőségek telepítése
 pip3 install -r installers/requirements.txt
+
+# Ha hiba van, próbáld:
+pip3 install --upgrade pip
+pip3 install -r installers/requirements.txt --force-reinstall
 ```
 
 ### Port már használatban
 
 ```bash
-# Melyik process használja a portot?
+# Melyik process használja a 8000-es portot?
 sudo lsof -i :8000
 
-# Kill process
+# Vagy
+sudo netstat -tulpn | grep :8000
+
+# Process leállítása (ha szükséges)
 sudo kill -9 <PID>
 ```
 
 ### Jogosultság hibák
 
 ```bash
-# Jogosultságok beállítása
+# Scriptek futtathatóvá tétele
 chmod +x start.sh
 chmod +x installers/install.sh
+
+# Mappák jogosultságai
 chmod -R 755 logs data projects
 ```
 
 ### Log fájlok ellenőrzése
 
 ```bash
+# Alkalmazás logok
 tail -f logs/app.log
+
+# Ollama logok
 tail -f logs/ollama.log
+
+# Hibák keresése
+grep -i error logs/app.log
 ```
 
 ---
 
-## 📝 Frissítés
+## 📝 További információk
 
-### Kód frissítése
-
-```bash
-git pull origin main
-pip3 install -r installers/requirements.txt --upgrade
-```
-
-### Ollama frissítése
-
-```bash
-ollama --version
-# Újabb verzió letöltése
-curl https://ollama.com/install.sh | sh
-```
+- **API dokumentáció**: http://localhost:8000/docs
+- **Projekt struktúra**: `docs/PROJECT_STRUCTURE.md`
+- **Használati útmutató**: `docs/USAGE_GUIDE.md`
+- **GitHub repository**: https://github.com/zedinke/ZedinArkManager
 
 ---
 
-## 🔐 Biztonság (éles környezet)
+## 🎉 Sikeres telepítés!
 
-1. **CORS korlátozás**: Szerkeszd a `main.py`-t, és korlátozd az `allow_origins`-t
-2. **Autentikáció**: Adjon hozzá API kulcs autentikációt
-3. **HTTPS**: Használj Nginx reverse proxy-t SSL-lel
-4. **Firewall**: Nyisd meg csak a szükséges portokat
+Ha minden lépés sikeres volt, a rendszer most fut és használatra kész!
 
----
+**Első lépések:**
+1. Nyisd meg: http://localhost:8000/docs
+2. Próbáld ki a `/api/chat` endpoint-ot
+3. Generálj kódot a `/api/generate` endpoint-tal
 
-## 📞 További információk
-
-- API dokumentáció: `http://localhost:8000/docs`
-- Projekt struktúra: `docs/PROJECT_STRUCTURE.md`
-- Használati útmutató: `docs/USAGE_GUIDE.md`
-
----
-
-**Telepítés befejezve! 🎉**
-
+**Jó munkát! 🚀**
