@@ -23,6 +23,9 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
         _token: vscode.CancellationToken,
     ) {
         console.log('SidebarChatViewProvider.resolveWebviewView called!');
+        console.log('WebviewView:', webviewView);
+        console.log('View ID:', webviewView.viewId);
+        
         this._view = webviewView;
 
         webviewView.webview.options = {

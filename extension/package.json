@@ -35,6 +35,7 @@
         {
           "id": "zedinarkChatView",
           "name": "Chat",
+          "type": "webview",
           "when": "true"
         }
       ]
