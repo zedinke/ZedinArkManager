@@ -2,7 +2,7 @@
   "name": "zedinark-manager",
   "displayName": "ZedinArk Manager",
   "description": "AI Coding Assistant - Connect to remote ZedinArk API",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "zedinke",
   "repository": {
     "type": "git",
@@ -91,7 +91,11 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "npx @vscode/vsce package"
+    "package": "npx @vscode/vsce package",
+    "update": "bash update_version.sh patch",
+    "update:minor": "bash update_version.sh minor",
+    "update:major": "bash update_version.sh major",
+    "update:install": "bash update_and_install.sh"
   },
   "devDependencies": {
     "@types/vscode": "^1.80.0",
