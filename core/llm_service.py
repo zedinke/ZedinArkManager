@@ -231,16 +231,22 @@ class LLMService:
         """Stream chat (valós idejű)"""
         model = model or self.default_model
         
+        # Optimalizált options stream-hez (gyorsabb válasz, kevesebb CPU)
         options = {
             "temperature": temperature,
-            "num_thread": self.num_threads,
+            "num_thread": min(self.num_threads, 8),  # Max 8 thread (gyorsabb válasz)
         }
         
         if self.num_gpu_layers is not None:
             options["num_gpu"] = self.num_gpu_layers
         
+        # Optimalizált memória beállítások
         options["use_mmap"] = True
-        options["use_mlock"] = True
+        options["use_mlock"] = False  # False = gyorsabb, kevesebb memória lock
+        options["numa"] = False
+        options["low_vram"] = False
+        options["num_ctx"] = 512  # Csökkentve 2048-ról 512-re (gyorsabb, kisebb modellhez elég)
+        options["num_predict"] = 100  # Limitált token szám (gyorsabb válasz)
         
         payload = {
             "model": model,

@@ -91,10 +91,13 @@ class APIKeyManager:
             if not key_info.get("active", True):
                 return False
             
-            # Használati statisztika frissítése
+            # Használati statisztika frissítése (csak memóriában, ne minden híváskor mentse a fájlt)
             key_info["last_used"] = datetime.now().isoformat()
             key_info["usage_count"] = key_info.get("usage_count", 0) + 1
-            self._save_keys()
+            # Ne mentse minden híváskor - csak időnként (minden 10. hívás vagy 1 perc után)
+            # Ez gyorsítja az API választ
+            if key_info["usage_count"] % 10 == 0:
+                self._save_keys()
             
             return True
         
