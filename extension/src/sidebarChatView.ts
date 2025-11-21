@@ -760,7 +760,8 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                 vscode.postMessage({ command: 'switchMode', mode: currentMode });
                 
                 // Mode change notification
-                addSystemMessage(\`Mód váltva: \${currentMode === 'agent' ? 'Agent (autonóm)' : currentMode === 'edit' ? 'Edit (szerkesztés)' : 'Ask (kérdés-válasz)'}\`);
+                const modeText = currentMode === 'agent' ? 'Agent (autonóm)' : currentMode === 'edit' ? 'Edit (szerkesztés)' : 'Ask (kérdés-válasz)';
+                addSystemMessage(`Mód váltva: ${modeText}`);
             });
         });
 
@@ -790,7 +791,7 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                         fileData: base64,
                         fileName: file.name
                     });
-                    addSystemMessage(\`📄 Fájl feltöltve: \${file.name}\`);
+                    addSystemMessage(`📄 Fájl feltöltve: ${file.name}`);
                 };
                 reader.readAsDataURL(file);
             }
@@ -809,7 +810,7 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                         imageData: base64,
                         imageName: file.name
                     });
-                    addSystemMessage(\`🖼️ Kép feltöltve: \${file.name}\`);
+                    addSystemMessage(`🖼️ Kép feltöltve: ${file.name}`);
                 };
                 reader.readAsDataURL(file);
             }
@@ -817,7 +818,7 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
 
         function addMessage(role, content) {
             const messageDiv = document.createElement('div');
-            messageDiv.className = \`message \${role}\`;
+            messageDiv.className = `message ${role}`;
             
             const roleDiv = document.createElement('div');
             roleDiv.className = 'message-role';
@@ -828,9 +829,11 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             
             // Markdown-like formatting
             content = escapeHtml(content);
-            content = content.replace(/\\n/g, '<br>');
-            content = content.replace(/\\`\\`\\`([\\s\\S]*?)\\`\\`\\`/g, '<pre><code>$1</code></pre>');
-            content = content.replace(/\\`([^\\`]+)\\`/g, '<code>$1</code>');
+            content = content.replace(/\n/g, '<br>');
+            const codeBlockRegex = new RegExp('```([\\s\\S]*?)```', 'g');
+            content = content.replace(codeBlockRegex, '<pre><code>$1</code></pre>');
+            const inlineCodeRegex = new RegExp('`([^`]+)`', 'g');
+            content = content.replace(inlineCodeRegex, '<code>$1</code>');
             
             contentDiv.innerHTML = content;
             
@@ -883,7 +886,7 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                     messageInput.focus();
                     break;
                 case 'error':
-                    addMessage('assistant', \`❌ Hiba: \${message.error}\`);
+                    addMessage('assistant', `❌ Hiba: ${message.error}`);
                     sendButton.disabled = false;
                     messageInput.focus();
                     break;
