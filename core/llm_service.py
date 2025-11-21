@@ -75,11 +75,11 @@ class LLMService:
         if context:
             full_prompt = f"{context}\n\n{prompt}"
         
-        # Optimalizált options generate-hez is
+        # Optimalizált options generate-hez is (12 CPU mag)
         options = {
             "temperature": temperature,
             "num_predict": max_tokens,
-            "num_thread": min(self.num_threads, 8),  # Max 8 thread
+            "num_thread": min(self.num_threads, 12),  # Max 12 thread (több erőforrás)
         }
         
         if self.num_gpu_layers is not None:
@@ -171,10 +171,10 @@ class LLMService:
         """Chat API használata (több üzenet kontextussal)"""
         model = model or self.default_model
         
-        # Optimalizált options (gyorsabb válasz, kevesebb CPU)
+        # Optimalizált options (12 CPU mag, 300 sor válasz)
         options = {
             "temperature": temperature,
-            "num_thread": min(self.num_threads, 8),  # Max 8 thread (gyorsabb válasz)
+            "num_thread": min(self.num_threads, 12),  # Max 12 thread (több erőforrás)
         }
         
         if self.num_gpu_layers is not None:
@@ -185,8 +185,8 @@ class LLMService:
         options["use_mlock"] = False  # False = gyorsabb, kevesebb memória lock
         options["numa"] = False
         options["low_vram"] = False
-        options["num_ctx"] = 512  # Csökkentve 2048-ról 512-re (gyorsabb, kisebb modellhez elég)
-        options["num_predict"] = 100  # Limitált token szám (gyorsabb válasz)
+        options["num_ctx"] = 2048  # Nagyobb context window (300 sorhoz)
+        options["num_predict"] = 2000  # ~300 sor válasz (~2000 token)
         
         payload = {
             "model": model,
@@ -231,10 +231,10 @@ class LLMService:
         """Stream chat (valós idejű)"""
         model = model or self.default_model
         
-        # Optimalizált options stream-hez (gyorsabb válasz, kevesebb CPU)
+        # Optimalizált options stream-hez (12 CPU mag, 300 sor válasz)
         options = {
             "temperature": temperature,
-            "num_thread": min(self.num_threads, 8),  # Max 8 thread (gyorsabb válasz)
+            "num_thread": min(self.num_threads, 12),  # Max 12 thread (több erőforrás)
         }
         
         if self.num_gpu_layers is not None:
@@ -245,8 +245,8 @@ class LLMService:
         options["use_mlock"] = False  # False = gyorsabb, kevesebb memória lock
         options["numa"] = False
         options["low_vram"] = False
-        options["num_ctx"] = 512  # Csökkentve 2048-ról 512-re (gyorsabb, kisebb modellhez elég)
-        options["num_predict"] = 100  # Limitált token szám (gyorsabb válasz)
+        options["num_ctx"] = 2048  # Nagyobb context window (300 sorhoz)
+        options["num_predict"] = 2000  # ~300 sor válasz (~2000 token)
         
         payload = {
             "model": model,
