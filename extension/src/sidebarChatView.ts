@@ -830,9 +830,9 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             // Markdown-like formatting
             content = escapeHtml(content);
             content = content.replace(/\\n/g, '<br>');
-            const codeBlockRegex = new RegExp('\\\\`\\\\`\\\\`([\\\\s\\\\S]*?)\\\\`\\\\`\\\\`', 'g');
+            const codeBlockRegex = /```([\s\S]*?)```/g;
             content = content.replace(codeBlockRegex, '<pre><code>$1</code></pre>');
-            const inlineCodeRegex = new RegExp('\\\\`([^\\\\`]+)\\\\`', 'g');
+            const inlineCodeRegex = /`([^`]+)`/g;
             content = content.replace(inlineCodeRegex, '<code>$1</code>');
             
             contentDiv.innerHTML = content;
