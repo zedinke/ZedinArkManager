@@ -40,8 +40,9 @@ class LLMService:
             if env_threads:
                 self.num_threads = int(env_threads)
             else:
-                # Automatikus: CPU magok száma
-                self.num_threads = multiprocessing.cpu_count()
+                # Automatikus: CPU magok száma, de max 16 (túl sok thread CPU pörgést okoz)
+                cpu_count = multiprocessing.cpu_count()
+                self.num_threads = min(cpu_count, 16)  # Max 16 thread
         else:
             self.num_threads = num_threads
     
@@ -74,17 +75,20 @@ class LLMService:
         if context:
             full_prompt = f"{context}\n\n{prompt}"
         
+        # Optimalizált options generate-hez is
         options = {
             "temperature": temperature,
             "num_predict": max_tokens,
-            "num_thread": self.num_threads,
+            "num_thread": min(self.num_threads, 8),  # Max 8 thread
         }
         
         if self.num_gpu_layers is not None:
             options["num_gpu"] = self.num_gpu_layers
         
+        # Optimalizált memória beállítások
         options["use_mmap"] = True
-        options["use_mlock"] = True
+        options["use_mlock"] = False  # False = gyorsabb
+        options["num_ctx"] = 1024  # Optimalizált context méret
         
         payload = {
             "model": model,
@@ -167,19 +171,22 @@ class LLMService:
         """Chat API használata (több üzenet kontextussal)"""
         model = model or self.default_model
         
+        # Optimalizált options (gyorsabb válasz, kevesebb CPU)
         options = {
             "temperature": temperature,
-            "num_thread": self.num_threads,
+            "num_thread": min(self.num_threads, 8),  # Max 8 thread (gyorsabb válasz)
         }
         
         if self.num_gpu_layers is not None:
             options["num_gpu"] = self.num_gpu_layers
         
+        # Optimalizált memória beállítások
         options["use_mmap"] = True
-        options["use_mlock"] = True
+        options["use_mlock"] = False  # False = gyorsabb, kevesebb memória lock
         options["numa"] = False
         options["low_vram"] = False
-        options["num_ctx"] = 2048
+        options["num_ctx"] = 512  # Csökkentve 2048-ról 512-re (gyorsabb, kisebb modellhez elég)
+        options["num_predict"] = 100  # Limitált token szám (gyorsabb válasz)
         
         payload = {
             "model": model,
