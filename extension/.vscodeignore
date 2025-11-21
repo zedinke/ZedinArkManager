@@ -6,9 +6,22 @@ tsconfig.json
 **/*.map
 **/*.ts
 !out/**/*.js
-# Include node_modules for production dependencies (axios)
+# Exclude dev dependencies, but include production dependencies (axios)
 node_modules/@types/**
 node_modules/.bin/**
 node_modules/typescript/**
 node_modules/@vscode/**
+node_modules/linkify-it/**
+node_modules/markdown-it/**
+node_modules/uc.micro/**
+node_modules/argparse/**
+node_modules/commander/**
+node_modules/fs-extra/**
+node_modules/glob/**
+node_modules/minimist/**
+node_modules/read-package-json/**
+node_modules/semver/**
+node_modules/yauzl/**
+node_modules/yazl/**
+node_modules/applicationinsights/**
 
