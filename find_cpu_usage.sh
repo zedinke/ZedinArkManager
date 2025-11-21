@@ -3,6 +3,12 @@
 
 set -e
 
+# bc telepítés ellenőrzése (ha nincs)
+if ! command -v bc &> /dev/null; then
+    echo "⚠️  bc nincs telepítve, telepítés..."
+    sudo apt install -y bc 2>/dev/null || echo "Manuálisan telepítsd: sudo apt install bc"
+fi
+
 echo "========================================="
 echo "CPU Használat Ellenőrzés"
 echo "========================================="
