@@ -125,7 +125,7 @@ class LLMService:
         
         options = {
             "temperature": temperature,
-            "num_thread": self.num_threads,
+            "num_thread": min(self.num_threads, 12),  # Max 12 thread (több erőforrás)
         }
         
         if self.num_gpu_layers is not None:
