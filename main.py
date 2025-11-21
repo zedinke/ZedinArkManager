@@ -18,6 +18,7 @@ from core.response_cache import ResponseCache
 from core.project_manager import ProjectManager
 from core.conversation_memory import ConversationMemory
 from core.auth import api_key_manager, verify_api_key
+from core.gpu_manager import gpu_manager
 from modules.code_generator import CodeGenerator
 from modules.project_context import ProjectContext
 
