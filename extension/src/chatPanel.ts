@@ -26,10 +26,10 @@ export class ChatPanel {
         );
     }
 
-    public static createOrShow(api: ZedinArkAPI) {
-        const column = vscode.window.activeTextEditor
+    public static createOrShow(api: ZedinArkAPI, viewColumn?: vscode.ViewColumn) {
+        const column = viewColumn || (vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
-            : undefined;
+            : undefined);
 
         if (ChatPanel.currentPanel) {
             ChatPanel.currentPanel._panel.reveal(column);
@@ -39,7 +39,7 @@ export class ChatPanel {
         const panel = vscode.window.createWebviewPanel(
             'zedinarkChat',
             'ZedinArk Chat',
-            column || vscode.ViewColumn.One,
+            column || vscode.ViewColumn.Beside,
             {
                 enableScripts: true,
                 retainContextWhenHidden: true

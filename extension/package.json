@@ -35,8 +35,23 @@
         {
           "id": "zedinarkChatView",
           "name": "Chat",
-          "type": "webview",
           "when": "true"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "zedinark.sidebarChat",
+          "when": "view == zedinarkChatView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "zedinark.sidebarChat",
+          "when": "view == zedinarkChatView",
+          "group": "inline"
         }
       ]
     },
@@ -52,6 +67,11 @@
       {
         "command": "zedinark.chatPanel",
         "title": "ZedinArk: Open Chat Panel"
+      },
+      {
+        "command": "zedinark.sidebarChat",
+        "title": "ZedinArk: Open Sidebar Chat",
+        "icon": "$(comment-discussion)"
       },
       {
         "command": "zedinark.generate",

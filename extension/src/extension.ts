@@ -54,9 +54,16 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // Chat ablak megnyitása
+    // Chat ablak megnyitása (sidebar pozícióban)
     const chatPanelCommand = vscode.commands.registerCommand('zedinark.chatPanel', () => {
         ChatPanel.createOrShow(api);
+    });
+
+    // Sidebar chat megnyitása (új command - ChatPanel-t használ)
+    const sidebarChatCommand = vscode.commands.registerCommand('zedinark.sidebarChat', () => {
+        // ChatPanel-t használunk, ami már működik
+        ChatPanel.createOrShow(api, vscode.ViewColumn.Beside);
+        vscode.window.showInformationMessage('ZedinArk Chat megnyitva!');
     });
 
     const chatCommand = vscode.commands.registerCommand('zedinark.chat', async () => {
