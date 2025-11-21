@@ -21,6 +21,24 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "zedinarkChatView",
+          "name": "ZedinArk AI",
+          "when": "true"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "zedinark",
+          "title": "ZedinArk AI",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "zedinark.connect",

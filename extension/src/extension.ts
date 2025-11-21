@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ZedinArkAPI } from './api';
 import { ChatPanel } from './chatPanel';
+import { SidebarChatViewProvider } from './sidebarChatView';
 
 let api: ZedinArkAPI;
 
@@ -190,6 +191,15 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     });
+
+    // Sidebar chat view
+    const sidebarProvider = new SidebarChatViewProvider(context.extensionUri, api);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            SidebarChatViewProvider.viewType,
+            sidebarProvider
+        )
+    );
 
     context.subscriptions.push(connectCommand, chatCommand, chatPanelCommand, generateCommand, explainCommand, refactorCommand);
 }

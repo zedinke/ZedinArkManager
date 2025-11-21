@@ -97,6 +97,35 @@ export class ZedinArkAPI {
         }
     }
 
+    async chatWithHistory(messages: Array<{role: string, content: string}>, model?: string): Promise<string> {
+        try {
+            const response = await this.client.post('/api/chat', {
+                messages: messages,
+                model: model
+            });
+            return response.data.response || '';
+        } catch (error: any) {
+            throw new Error(`Chat failed: ${error.response?.data?.detail || error.message}`);
+        }
+    }
+
+    async analyzeImage(imageData: string, prompt: string, model?: string): Promise<string> {
+        try {
+            const response = await this.client.post('/api/vision', {
+                image: imageData,
+                prompt: prompt,
+                model: model || 'llava'
+            });
+            return response.data.response || '';
+        } catch (error: any) {
+            // Ha nincs vision endpoint, egyszerű válasz
+            if (error.response?.status === 404) {
+                return `Kép feltöltve. Vision model még nincs implementálva a backend-en.`;
+            }
+            throw new Error(`Image analysis failed: ${error.response?.data?.detail || error.message}`);
+        }
+    }
+
     setApiKey(apiKey: string) {
         this.apiKey = apiKey;
         this.client.defaults.headers['X-API-Key'] = apiKey;
