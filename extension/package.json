@@ -85,6 +85,11 @@
       {
         "command": "zedinark.refactor",
         "title": "ZedinArk: Refactor Code"
+      },
+      {
+        "command": "zedinark.update",
+        "title": "ZedinArk: Check for Updates",
+        "icon": "$(sync)"
       }
     ],
     "configuration": {

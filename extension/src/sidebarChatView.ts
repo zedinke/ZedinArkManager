@@ -53,6 +53,9 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 case 'readFile':
                     await this.handleReadFile(message.filePath);
                     break;
+                case 'checkForUpdates':
+                    await vscode.commands.executeCommand('zedinark.update');
+                    break;
             }
         });
     }
@@ -617,6 +620,35 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             flex-shrink: 0;
         }
 
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .header-title {
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .update-btn {
+            padding: 4px 8px;
+            border: 1px solid var(--vscode-button-border);
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .update-btn:hover {
+            background: var(--vscode-button-secondaryHoverBackground);
+        }
+
         .mode-selector {
             display: flex;
             gap: 4px;
@@ -849,6 +881,12 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
 </head>
 <body>
     <div class="header">
+        <div class="header-top">
+            <div class="header-title">ZEDINARK AI</div>
+            <button class="update-btn" onclick="checkForUpdates()" title="Frissítés ellenőrzése">
+                🔄 Update
+            </button>
+        </div>
         <div class="mode-selector">
             <button class="mode-btn active" data-mode="agent">🤖 Agent</button>
             <button class="mode-btn" data-mode="ask">💬 Ask</button>
