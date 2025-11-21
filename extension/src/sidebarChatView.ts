@@ -886,7 +886,7 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                     messageInput.focus();
                     break;
                 case 'error':
-                    addMessage('assistant', `❌ Hiba: ${message.error}`);
+                    addMessage('assistant', '❌ Hiba: ' + message.error);
                     sendButton.disabled = false;
                     messageInput.focus();
                     break;
