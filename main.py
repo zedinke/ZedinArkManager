@@ -641,6 +641,14 @@ class GenerateKeyRequest(BaseModel):
     description: str = Field("", description="Kulcs leírása")
 
 
+class RevokeKeyRequest(BaseModel):
+    api_key_to_revoke: str = Field(..., description="Visszavonandó API kulcs")
+
+
+class VerifyKeyRequest(BaseModel):
+    api_key_to_verify: str = Field(..., description="Ellenőrizendő API kulcs")
+
+
 @app.post("/api/auth/generate")
 async def generate_api_key(request: GenerateKeyRequest):
     """API kulcs generálása (admin)"""
@@ -672,11 +680,11 @@ async def list_api_keys(api_key: Optional[str] = Security(verify_api_key)):
 
 
 @app.post("/api/auth/revoke")
-async def revoke_api_key(api_key_to_revoke: str = Field(..., description="Visszavonandó API kulcs"), 
+async def revoke_api_key(request: RevokeKeyRequest,
                         api_key: Optional[str] = Security(verify_api_key)):
     """API kulcs visszavonása"""
     try:
-        success = api_key_manager.revoke_key(api_key_to_revoke)
+        success = api_key_manager.revoke_key(request.api_key_to_revoke)
         if success:
             return {"success": True, "message": "API kulcs visszavonva"}
         else:
@@ -689,10 +697,10 @@ async def revoke_api_key(api_key_to_revoke: str = Field(..., description="Vissza
 
 
 @app.post("/api/auth/verify")
-async def verify_api_key_endpoint(api_key_to_verify: str = Field(..., description="Ellenőrizendő API kulcs")):
+async def verify_api_key_endpoint(request: VerifyKeyRequest):
     """API kulcs ellenőrzése (autentikáció nélkül)"""
     try:
-        is_valid = api_key_manager.validate_key(api_key_to_verify)
+        is_valid = api_key_manager.validate_key(request.api_key_to_verify)
         return {
             "valid": is_valid,
             "message": "Érvényes API kulcs" if is_valid else "Érvénytelen API kulcs"
