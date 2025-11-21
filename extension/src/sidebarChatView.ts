@@ -1098,9 +1098,10 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             const backtick = String.fromCharCode(96);
             
             // Code blocks first (```...```)
-            const codeBlockPattern = backtick + backtick + backtick + '(?:\\w+)?\\n?([\\s\\S]*?)' + backtick + backtick + backtick;
+            const tripleBacktick = backtick + backtick + backtick;
+            const codeBlockPattern = tripleBacktick + '(?:\\w+)?\\n?([\\s\\S]*?)' + tripleBacktick;
             const codeBlockRegex = new RegExp(codeBlockPattern, 'g');
-            content = content.replace(codeBlockRegex, (match, code) => {
+            content = content.replace(codeBlockRegex, function(match, code) {
                 // Clean up the code content
                 const cleanCode = code.trim();
                 return '<pre><code>' + cleanCode + '</code></pre>';
@@ -1114,7 +1115,7 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             // Finally, replace newlines (but not inside code blocks)
             // Split by code blocks, replace newlines in text parts only
             const parts = content.split(/(<pre><code>[\s\S]*?<\/code><\/pre>)/g);
-            content = parts.map((part, index) => {
+            content = parts.map(function(part) {
                 if (part.match(/^<pre><code>[\s\S]*?<\/code><\/pre>$/)) {
                     // This is a code block, keep as is
                     return part;
