@@ -13,7 +13,9 @@ services:
       - zedinark-network
 
   api:
-    build: ..
+    build:
+      context: ..
+      dockerfile: installers/Dockerfile
     container_name: zedinark-api
     ports:
       - "8000:8000"
