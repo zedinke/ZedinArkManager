@@ -17,12 +17,16 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Sidebar chat view - regisztrálás azonnal
     const sidebarProvider = new SidebarChatViewProvider(context.extensionUri, api);
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(
-            SidebarChatViewProvider.viewType,
-            sidebarProvider
-        )
+    const providerRegistration = vscode.window.registerWebviewViewProvider(
+        'zedinarkChatView',
+        sidebarProvider,
+        {
+            webviewOptions: {
+                retainContextWhenHidden: true
+            }
+        }
     );
+    context.subscriptions.push(providerRegistration);
 
     // Commandok regisztrálása
     const connectCommand = vscode.commands.registerCommand('zedinark.connect', async () => {
