@@ -29,6 +29,11 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // Chat ablak megnyitása
+    const chatPanelCommand = vscode.commands.registerCommand('zedinark.chatPanel', () => {
+        ChatPanel.createOrShow(api);
+    });
+
     const chatCommand = vscode.commands.registerCommand('zedinark.chat', async () => {
         const message = await vscode.window.showInputBox({
             prompt: 'Message to AI',
@@ -186,7 +191,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    context.subscriptions.push(connectCommand, chatCommand, generateCommand, explainCommand, refactorCommand);
+    context.subscriptions.push(connectCommand, chatCommand, chatPanelCommand, generateCommand, explainCommand, refactorCommand);
 }
 
 export function deactivate() {}

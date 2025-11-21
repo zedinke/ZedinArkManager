@@ -51,7 +51,14 @@ export class ChatPanel {
 
     private async handleMessage(message: string) {
         try {
+            // Loading indicator
+            this._panel.webview.postMessage({
+                command: 'loading',
+                loading: true
+            });
+
             const response = await this.api.chat(message);
+            
             this._panel.webview.postMessage({
                 command: 'receiveMessage',
                 response: response
@@ -60,6 +67,11 @@ export class ChatPanel {
             this._panel.webview.postMessage({
                 command: 'error',
                 error: error.message
+            });
+        } finally {
+            this._panel.webview.postMessage({
+                command: 'loading',
+                loading: false
             });
         }
     }
@@ -84,18 +96,30 @@ export class ChatPanel {
             margin-bottom: 10px;
         }
         .message {
-            margin-bottom: 10px;
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 5px;
         }
         .user {
-            color: var(--vscode-textLink-foreground);
+            background: var(--vscode-input-background);
+            color: var(--vscode-foreground);
+            text-align: right;
         }
         .assistant {
-            color: var(--vscode-textLink-foreground);
+            background: var(--vscode-textBlockQuote-background);
+            color: var(--vscode-foreground);
+        }
+        .loading {
+            color: var(--vscode-descriptionForeground);
+            font-style: italic;
         }
         #input {
-            width: 100%;
+            width: calc(100% - 20px);
             padding: 10px;
             border: 1px solid var(--vscode-input-border);
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            font-size: 14px;
         }
         button {
             padding: 10px 20px;
@@ -104,6 +128,14 @@ export class ChatPanel {
             color: var(--vscode-button-foreground);
             border: none;
             cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
     </style>
 </head>
@@ -120,16 +152,43 @@ export class ChatPanel {
         function addMessage(role, text) {
             const div = document.createElement('div');
             div.className = 'message ' + role;
-            div.textContent = (role === 'user' ? 'Te: ' : 'AI: ') + text;
+            const prefix = role === 'user' ? 'Te' : 'AI';
+            div.innerHTML = '<strong>' + prefix + ':</strong> ' + escapeHtml(text);
             messagesDiv.appendChild(div);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showLoading(show) {
+            const loadingDiv = document.getElementById('loading');
+            if (show) {
+                if (!loadingDiv) {
+                    const div = document.createElement('div');
+                    div.id = 'loading';
+                    div.className = 'message loading';
+                    div.textContent = 'AI válaszol...';
+                    messagesDiv.appendChild(div);
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                }
+            } else {
+                if (loadingDiv) {
+                    loadingDiv.remove();
+                }
+            }
+        }
         
         function sendMessage() {
-            const message = input.value;
+            const message = input.value.trim();
             if (message) {
                 addMessage('user', message);
                 input.value = '';
+                input.disabled = true;
+                showLoading(true);
                 vscode.postMessage({ command: 'sendMessage', text: message });
             }
         }
@@ -144,10 +203,23 @@ export class ChatPanel {
             const message = event.data;
             switch (message.command) {
                 case 'receiveMessage':
+                    showLoading(false);
                     addMessage('assistant', message.response);
+                    input.disabled = false;
+                    input.focus();
                     break;
                 case 'error':
-                    addMessage('assistant', 'Hiba: ' + message.error);
+                    showLoading(false);
+                    addMessage('assistant', '❌ Hiba: ' + message.error);
+                    input.disabled = false;
+                    input.focus();
+                    break;
+                case 'loading':
+                    showLoading(message.loading);
+                    if (!message.loading) {
+                        input.disabled = false;
+                        input.focus();
+                    }
                     break;
             }
         });

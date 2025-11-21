@@ -31,6 +31,10 @@
         "title": "ZedinArk: Chat with AI"
       },
       {
+        "command": "zedinark.chatPanel",
+        "title": "ZedinArk: Open Chat Panel"
+      },
+      {
         "command": "zedinark.generate",
         "title": "ZedinArk: Generate Code"
       },
