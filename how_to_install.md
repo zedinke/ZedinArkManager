@@ -2,6 +2,14 @@
 
 ## 📋 Előfeltételek ellenőrzése
 
+### ⚠️ FONTOS: Docker környezet
+
+Ha **Docker már telepítve van** a gépeden és más programok is használják:
+- ✅ **NEM** telepítjük újra a Docker-t
+- ✅ **NEM** állítjuk le a meglévő konténereket
+- ✅ Használhatod a **Docker telepítési opciót** (alább)
+- ✅ Vagy folytathatod a **hagyományos telepítéssel** (Python közvetlenül)
+
 ### 1. lépés: Rendszerfrissítés
 
 ```bash
@@ -9,7 +17,22 @@ sudo apt update
 sudo apt upgrade -y
 ```
 
-### 2. lépés: Python telepítése/ellenőrzése
+### 2. lépés: Telepítési módszer kiválasztása
+
+**Válassz egyet a kettő közül:**
+
+#### Opció A: Docker telepítés (ajánlott, ha Docker már van)
+- ✅ Izolált környezet
+- ✅ Könnyű karbantartás
+- ✅ Nem érinti a meglévő rendszert
+- 👉 [Ugrás a Docker telepítéshez](#-docker-telepítés-opció-a)
+
+#### Opció B: Hagyományos telepítés (Python közvetlenül)
+- ✅ Közvetlen hozzáférés
+- ✅ Egyszerűbb hibakeresés
+- 👉 [Ugrás a hagyományos telepítéshez](#-hagyományos-telepítés-opció-b)
+
+### 3. lépés: Python telepítése/ellenőrzése (csak Opció B-hez)
 
 ```bash
 # Python verzió ellenőrzése
@@ -19,7 +42,7 @@ python3 --version
 sudo apt install python3 python3-pip python3-venv -y
 ```
 
-### 3. lépés: Git telepítése/ellenőrzése
+### 4. lépés: Git telepítése/ellenőrzése
 
 ```bash
 # Git ellenőrzése
@@ -31,7 +54,103 @@ sudo apt install git -y
 
 ---
 
-## 🚀 Telepítés lépései
+## 🐳 Docker telepítés (Opció A)
+
+> **Megjegyzés:** Ez a módszer **nem telepíti újra a Docker-t** és **nem állítja le** a meglévő konténereket. 
+> Csak új konténereket hoz létre a ZedinArkManager számára.
+
+### 1. lépés: Docker ellenőrzése
+
+```bash
+# Docker ellenőrzése (ha már telepítve van)
+docker --version
+
+# Docker Compose ellenőrzése
+docker-compose --version
+
+# Meglévő konténerek listázása (nem fogja őket megváltoztatni)
+docker ps
+```
+
+### 2. lépés: Repository klónozása
+
+```bash
+git clone https://github.com/zedinke/ZedinArkManager.git
+cd ZedinArkManager
+```
+
+### 3. lépés: Docker telepítő futtatása
+
+```bash
+cd installers
+chmod +x docker-install.sh
+./docker-install.sh
+cd ..
+```
+
+### 4. lépés: Docker Compose build és indítás
+
+```bash
+# Konténerek build-elése és indítása
+cd installers
+docker-compose up -d --build
+
+# Logok követése
+docker-compose logs -f
+```
+
+### 5. lépés: Modell telepítése
+
+```bash
+# Ollama konténerbe belépés
+docker exec -it zedinark-ollama ollama pull llama3.1:8b
+
+# Vagy közvetlenül
+docker-compose exec ollama ollama pull llama3.1:8b
+```
+
+### 6. lépés: Ellenőrzés
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Konténerek állapota
+docker-compose ps
+```
+
+### Docker használat
+
+**Konténerek indítása:**
+```bash
+cd installers
+docker-compose up -d
+```
+
+**Konténerek leállítása:**
+```bash
+docker-compose down
+```
+
+**Logok megtekintése:**
+```bash
+docker-compose logs -f api      # API logok
+docker-compose logs -f ollama   # Ollama logok
+```
+
+**Konténerek újraindítása:**
+```bash
+docker-compose restart
+```
+
+**Frissítés (új build):**
+```bash
+docker-compose up -d --build
+```
+
+---
+
+## 🚀 Hagyományos telepítés (Opció B)
 
 ### 1. lépés: Repository klónozása
 

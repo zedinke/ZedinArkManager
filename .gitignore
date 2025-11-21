@@ -57,3 +57,6 @@ projects/*
 *.tmp
 *.temp
 
+# Docker
+.dockerignore
+
