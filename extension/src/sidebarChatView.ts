@@ -131,12 +131,32 @@ Működési stílusod:
 AGENT MÓD: Teljes autonómiád van. 
 - Elemezd a feladatot részletesen
 - Hozz döntéseket önállóan
-- Végezd el a szükséges fájl műveleteket (CREATE_FILE, DELETE_FILE, MODIFY_FILE)
-- Ha fájlokat hozol létre, használd ezt a formátumot:
-  CREATE_FILE: path/to/file.py
-  \`\`\`python
-  [kód tartalom]
-  \`\`\`
+- Végezd el a szükséges fájl műveleteket
+
+FÁJL MŰVELETEK FORMÁTUMA (KÖTELEZŐ!):
+
+1. FÁJL LÉTREHOZÁSA:
+CREATE_FILE: relatív/útvonal/fájl.ext
+\`\`\`ext
+[fájl tartalom itt]
+\`\`\`
+
+2. FÁJL MÓDOSÍTÁSA:
+MODIFY_FILE: relatív/útvonal/fájl.ext
+\`\`\`ext
+[új fájl tartalom itt - TELJES TARTALOM!]
+\`\`\`
+
+3. FÁJL TÖRLÉSE:
+DELETE_FILE: relatív/útvonal/fájl.ext
+
+4. MAPPA LÉTREHOZÁSA (automatikusan történik, ha szükséges):
+A CREATE_FILE automatikusan létrehozza a szükséges mappákat.
+
+FONTOS:
+- MINDIG használd ezt a formátumot fájl műveletekhez!
+- A fájl útvonalak relatívak a workspace gyökeréhez!
+- Ha módosítasz egy fájlt, adj vissza a TELJES új tartalmat!
 - Jelentsd vissza, mit csináltál és miért`;
         } else if (this.currentMode === 'edit') {
             return basePrompt + `
@@ -185,56 +205,125 @@ Ha fájlokat kell létrehozni vagy módosítani, használd a file műveleteket.`
 
     private async executeAgentActions(response: string, workspacePath: string) {
         // Agent válaszban keresünk fájl műveleteket
-        // CREATE_FILE: path/to/file.py
-        // ```python
-        // code
-        // ```
-        const createFileRegex = /CREATE_FILE:\s*([^\n]+)\n```(\w+)?\n([\s\S]*?)```/g;
-        let match;
+        let actionsPerformed = false;
         
-        while ((match = createFileRegex.exec(response)) !== null) {
-            const filePath = match[1].trim();
-            const language = match[2] || '';
-            const content = match[3].trim();
+        try {
+            // CREATE_FILE: path/to/file.py
+            // ```ext
+            // content
+            // ```
+            // Több verziót is támogatunk a regex-ben (rugalmasabb)
+            const createFilePatterns = [
+                /CREATE_FILE:\s*([^\n`]+)\s*\n\s*```(\w+)?\s*\n([\s\S]*?)```/g,
+                /CREATE_FILE:\s*([^\n`]+)\s*\n\s*```\s*\n([\s\S]*?)```/g,
+                /CREATE_FILE[:\s]+([^\n`]+)\s*\n\s*```(\w+)?\s*\n([\s\S]*?)```/g
+            ];
             
-            const fullPath = path.join(workspacePath, filePath);
-            await this.createFile(fullPath, content);
-            
-            // Visszajelzés a felhasználónak
-            this._view?.webview.postMessage({
-                command: 'fileCreated',
-                filePath: filePath
-            });
-        }
+            for (const regex of createFilePatterns) {
+                let match;
+                regex.lastIndex = 0; // Reset regex
+                
+                while ((match = regex.exec(response)) !== null) {
+                    const filePath = match[1].trim();
+                    const content = match[2] ? match[3].trim() : (match[2] !== undefined ? match[2].trim() : match[1]);
+                    const actualContent = match.length === 4 ? match[3].trim() : content;
+                    
+                    // Népeld normalizáljuk az útvonalat
+                    const normalizedPath = filePath.replace(/^\.\//, '').replace(/^\//, '');
+                    const fullPath = path.join(workspacePath, normalizedPath);
+                    
+                    try {
+                        await this.createFile(fullPath, actualContent);
+                        actionsPerformed = true;
+                        
+                        // Visszajelzés a felhasználónak
+                        this._view?.webview.postMessage({
+                            command: 'fileCreated',
+                            filePath: normalizedPath
+                        });
+                        
+                        console.log(`✅ File created: ${normalizedPath}`);
+                    } catch (error: any) {
+                        console.error(`❌ Error creating file ${normalizedPath}:`, error);
+                    }
+                }
+            }
 
-        // DELETE_FILE: path/to/file.py
-        const deleteFileRegex = /DELETE_FILE:\s*([^\n]+)/g;
-        while ((match = deleteFileRegex.exec(response)) !== null) {
-            const filePath = match[1].trim();
-            const fullPath = path.join(workspacePath, filePath);
-            await this.deleteFile(fullPath);
+            // DELETE_FILE: path/to/file.py
+            const deleteFilePatterns = [
+                /DELETE_FILE:\s*([^\n`]+)/g,
+                /DELETE_FILE[:\s]+([^\n`]+)/g
+            ];
             
-            this._view?.webview.postMessage({
-                command: 'fileDeleted',
-                filePath: filePath
-            });
-        }
+            for (const regex of deleteFilePatterns) {
+                let match;
+                regex.lastIndex = 0;
+                
+                while ((match = regex.exec(response)) !== null) {
+                    const filePath = match[1].trim();
+                    const normalizedPath = filePath.replace(/^\.\//, '').replace(/^\//, '');
+                    const fullPath = path.join(workspacePath, normalizedPath);
+                    
+                    try {
+                        await this.deleteFile(fullPath);
+                        actionsPerformed = true;
+                        
+                        this._view?.webview.postMessage({
+                            command: 'fileDeleted',
+                            filePath: normalizedPath
+                        });
+                        
+                        console.log(`✅ File deleted: ${normalizedPath}`);
+                    } catch (error: any) {
+                        console.error(`❌ Error deleting file ${normalizedPath}:`, error);
+                    }
+                }
+            }
 
-        // MODIFY_FILE: path/to/file.py
-        // ```python
-        // new content
-        // ```
-        const modifyFileRegex = /MODIFY_FILE:\s*([^\n]+)\n```(\w+)?\n([\s\S]*?)```/g;
-        while ((match = modifyFileRegex.exec(response)) !== null) {
-            const filePath = match[1].trim();
-            const content = match[3].trim();
-            const fullPath = path.join(workspacePath, filePath);
-            await this.createFile(fullPath, content);
+            // MODIFY_FILE: path/to/file.py
+            // ```ext
+            // new content
+            // ```
+            const modifyFilePatterns = [
+                /MODIFY_FILE:\s*([^\n`]+)\s*\n\s*```(\w+)?\s*\n([\s\S]*?)```/g,
+                /MODIFY_FILE:\s*([^\n`]+)\s*\n\s*```\s*\n([\s\S]*?)```/g,
+                /MODIFY_FILE[:\s]+([^\n`]+)\s*\n\s*```(\w+)?\s*\n([\s\S]*?)```/g
+            ];
             
-            this._view?.webview.postMessage({
-                command: 'fileModified',
-                filePath: filePath
-            });
+            for (const regex of modifyFilePatterns) {
+                let match;
+                regex.lastIndex = 0;
+                
+                while ((match = regex.exec(response)) !== null) {
+                    const filePath = match[1].trim();
+                    const content = match.length === 4 ? match[3].trim() : match[2].trim();
+                    const normalizedPath = filePath.replace(/^\.\//, '').replace(/^\//, '');
+                    const fullPath = path.join(workspacePath, normalizedPath);
+                    
+                    try {
+                        // MODIFY_FILE is CREATE_FILE (overwrite)
+                        await this.createFile(fullPath, content);
+                        actionsPerformed = true;
+                        
+                        this._view?.webview.postMessage({
+                            command: 'fileModified',
+                            filePath: normalizedPath
+                        });
+                        
+                        console.log(`✅ File modified: ${normalizedPath}`);
+                    } catch (error: any) {
+                        console.error(`❌ Error modifying file ${normalizedPath}:`, error);
+                    }
+                }
+            }
+            
+            if (actionsPerformed) {
+                // Visszajelzés a felhasználónak
+                vscode.window.showInformationMessage('Agent fájl műveletek végrehajtva!');
+            }
+        } catch (error: any) {
+            console.error('Error executing agent actions:', error);
+            vscode.window.showErrorMessage(`Hiba fájl műveletek végrehajtásakor: ${error.message}`);
         }
     }
 
@@ -447,10 +536,43 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
 
     private async deleteFile(filePath: string) {
         try {
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
+            // Normalizáljuk az útvonalat
+            const normalizedPath = path.normalize(filePath);
+            
+            if (fs.existsSync(normalizedPath)) {
+                // Ha a fájl meg van nyitva VS Code-ban, zárjuk be
+                const uri = vscode.Uri.file(normalizedPath);
+                const openEditors = vscode.window.visibleTextEditors;
+                for (const editor of openEditors) {
+                    if (editor.document.uri.fsPath === normalizedPath) {
+                        await vscode.window.showTextDocument(editor.document, { preview: false });
+                        await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+                    }
+                }
+                
+                // Fájl törlése
+                fs.unlinkSync(normalizedPath);
+                console.log(`🗑️ File deleted: ${normalizedPath}`);
+                
+                // Próbáljuk meg törölni az üres mappákat is (max 5 szint)
+                let currentDir = path.dirname(normalizedPath);
+                for (let i = 0; i < 5; i++) {
+                    try {
+                        const files = fs.readdirSync(currentDir);
+                        if (files.length === 0) {
+                            fs.rmdirSync(currentDir);
+                            console.log(`📁 Empty directory deleted: ${currentDir}`);
+                            currentDir = path.dirname(currentDir);
+                        } else {
+                            break;
+                        }
+                    } catch {
+                        break;
+                    }
+                }
             }
         } catch (error: any) {
+            console.error(`Error deleting file ${filePath}:`, error);
             throw new Error(`Nem lehet törölni a fájlt: ${error.message}`);
         }
     }
