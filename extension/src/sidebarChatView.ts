@@ -24,7 +24,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
     ) {
         console.log('SidebarChatViewProvider.resolveWebviewView called!');
         console.log('WebviewView:', webviewView);
-        console.log('View ID:', webviewView.viewId);
+        console.log('View ID:', SidebarChatViewProvider.viewType);
         
         this._view = webviewView;
 
