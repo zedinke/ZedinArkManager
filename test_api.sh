@@ -4,7 +4,7 @@
 set -e
 
 API_URL="http://localhost:8000"
-TIMEOUT=180  # Timeout másodpercekben (3 perc - nagy modellekhez)
+TIMEOUT=30  # Timeout másodpercekben (30 sec - gyors modellhez)
 
 echo "========================================="
 echo "ZedinArkManager API Teszt"
@@ -74,43 +74,61 @@ echo ""
 # 5. Chat teszt (ha API key van)
 if [ ! -z "$API_KEY" ]; then
     echo "5. Chat teszt (API kulccsal)..."
-    echo -e "${YELLOW}⏳ Várakozás a válaszra (max 180 másodperc / 3 perc)...${NC}"
-    echo -e "${YELLOW}ℹ️  Gyors modellt használunk (phi3:mini) - várható válaszidő: 5-10 másodperc${NC}"
     
-    # Gyors modell használata (phi3:mini)
-    CHAT_RESPONSE=$(timeout $TIMEOUT curl -s -X POST "$API_URL/api/chat" \
-      -H "Content-Type: application/json" \
-      -H "X-API-Key: $API_KEY" \
-      -d '{
-        "messages": [
-          {"role": "user", "content": "Say hello in Hungarian in one word."}
-        ],
-        "model": "phi3:mini",
-        "temperature": 0.5
-      }' 2>&1)
-    
-    EXIT_CODE=$?
-    
-    if [ $EXIT_CODE -eq 0 ] && echo "$CHAT_RESPONSE" | grep -q "response"; then
-        echo -e "${GREEN}✅ Chat teszt OK${NC}"
-        echo "$CHAT_RESPONSE" | python3 -m json.tool 2>/dev/null | head -30 || echo "$CHAT_RESPONSE" | head -10
-    elif [ $EXIT_CODE -eq 124 ] || [ $EXIT_CODE -eq 28 ]; then
-        echo -e "${RED}❌ Chat teszt timeout (túl hosszú válaszidő > $TIMEOUT sec)${NC}"
-        echo -e "${YELLOW}ℹ️  Ez normális lehet nagy modelleknél vagy ha az Ollama nem válaszol${NC}"
-        echo ""
-        echo "Ellenőrzés:"
-        echo "  1. Ollama fut-e? curl http://localhost:11434/api/tags"
-        echo "  2. Próbáld gyorsabb modellt: phi3:mini"
-        echo "  3. Próbáld stream endpoint-ot: /api/chat/stream"
+    # Ollama ellenőrzése előtte
+    echo "Ollama ellenőrzése..."
+    if ! curl -s --max-time 5 http://localhost:11434/api/tags > /dev/null 2>&1; then
+        echo -e "${RED}❌ Ollama nem elérhető!${NC}"
+        echo "Indítsd el: ollama serve &"
+        echo -e "${YELLOW}⚠️  Chat teszt kihagyva${NC}"
     else
-        echo -e "${YELLOW}⚠️  Chat teszt nem sikerült (exit code: $EXIT_CODE)${NC}"
-        echo "Response (első 500 karakter):"
-        echo "$CHAT_RESPONSE" | head -c 500
+        echo -e "${GREEN}✅ Ollama elérhető${NC}"
         echo ""
+        echo -e "${YELLOW}⏳ Várakozás a válaszra (max 30 másodperc)...${NC}"
+        echo -e "${YELLOW}ℹ️  Gyors modellt használunk (phi3:mini) - várható válaszidő: 5-10 másodperc${NC}"
+        echo -e "${YELLOW}ℹ️  FIGYELEM: Ez CPU intenzív lehet (Ollama modell futtatás)${NC}"
+        
+        # Gyors modell használata (phi3:mini) - rövidebb timeout (30 sec)
+        # Progress jelzés hozzáadása
+        CHAT_RESPONSE=$(timeout 30 curl --progress-bar --max-time 30 -X POST "$API_URL/api/chat" \
+          -H "Content-Type: application/json" \
+          -H "X-API-Key: $API_KEY" \
+          -d '{
+            "messages": [
+              {"role": "user", "content": "Hi"}
+            ],
+            "model": "phi3:mini",
+            "temperature": 0.3
+          }' 2>&1)
+        
+        EXIT_CODE=$?
+        
         echo ""
-        echo "Hibaelhárítás:"
-        echo "  - Ellenőrizd az Ollama-t: curl http://localhost:11434/api/tags"
-        echo "  - Ellenőrizd a szerver logokat: tail -f logs/app.log"
+        
+        if [ $EXIT_CODE -eq 0 ] && echo "$CHAT_RESPONSE" | grep -q "response"; then
+            echo -e "${GREEN}✅ Chat teszt OK${NC}"
+            echo ""
+            echo "Válasz:"
+            echo "$CHAT_RESPONSE" | python3 -m json.tool 2>/dev/null | grep -A 3 "response" || echo "$CHAT_RESPONSE" | head -5
+        elif [ $EXIT_CODE -eq 124 ] || [ $EXIT_CODE -eq 28 ]; then
+            echo -e "${RED}❌ Chat teszt timeout (> 30 sec)${NC}"
+            echo -e "${YELLOW}ℹ️  Az Ollama túl lassan válaszol vagy nem válaszol${NC}"
+            echo ""
+            echo "Hibaelhárítás:"
+            echo "  1. Ollama ellenőrzése: curl http://localhost:11434/api/tags"
+            echo "  2. Ollama újraindítása: pkill ollama && ollama serve &"
+            echo "  3. Próbáld közvetlenül: ollama run phi3:mini 'Hi'"
+            echo "  4. Próbáld stream endpoint-ot: /api/chat/stream"
+        else
+            echo -e "${YELLOW}⚠️  Chat teszt nem sikerült (exit code: $EXIT_CODE)${NC}"
+            echo "Response (első 200 karakter):"
+            echo "$CHAT_RESPONSE" | head -c 200
+            echo ""
+            echo ""
+            echo "Hibaelhárítás:"
+            echo "  - Ollama ellenőrzése: curl http://localhost:11434/api/tags"
+            echo "  - Szerver logok: tail -20 logs/app.log"
+        fi
     fi
 else
     echo -e "${YELLOW}⚠️  Chat teszt kihagyva (nincs API kulcs)${NC}"
