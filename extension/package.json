@@ -17,9 +17,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:zedinark.connect",
-    "onCommand:zedinark.chat",
-    "onCommand:zedinark.generate"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
