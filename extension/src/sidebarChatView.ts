@@ -810,6 +810,59 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             border-bottom-left-radius: 4px;
         }
 
+        /* Code blocks */
+        .message-content pre {
+            background: var(--vscode-textCodeBlock-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            padding: 12px;
+            margin: 8px 0;
+            overflow-x: auto;
+            max-height: 250px; /* ~10 sor (line-height: 1.5 * font-size: ~13px * 10 + padding) */
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .message-content pre code {
+            font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--vscode-textCodeBlock-foreground, var(--vscode-foreground));
+            display: block;
+            white-space: pre;
+            padding: 0;
+            background: transparent;
+        }
+
+        .message-content code:not(pre code) {
+            background: var(--vscode-textCodeBlock-background);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
+            font-size: 0.9em;
+            color: var(--vscode-textCodeBlock-foreground, var(--vscode-foreground));
+        }
+
+        /* Scrollbar styling for code blocks */
+        .message-content pre::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .message-content pre::-webkit-scrollbar-track {
+            background: var(--vscode-scrollbarSlider-background, transparent);
+            border-radius: 4px;
+        }
+
+        .message-content pre::-webkit-scrollbar-thumb {
+            background: var(--vscode-scrollbarSlider-hoverBackground, var(--vscode-descriptionForeground));
+            border-radius: 4px;
+        }
+
+        .message-content pre::-webkit-scrollbar-thumb:hover {
+            background: var(--vscode-scrollbarSlider-activeBackground, var(--vscode-foreground));
+        }
+
         .message-role {
             font-size: 11px;
             opacity: 0.7;
@@ -1042,14 +1095,34 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             
             // Markdown-like formatting
             content = escapeHtml(content);
-            content = content.replace(/\\n/g, '<br>');
             const backtick = String.fromCharCode(96);
-            const codeBlockPattern = backtick + backtick + backtick + '([\\s\\S]*?)' + backtick + backtick + backtick;
+            
+            // Code blocks first (```...```)
+            const codeBlockPattern = backtick + backtick + backtick + '(?:\\w+)?\\n?([\\s\\S]*?)' + backtick + backtick + backtick;
             const codeBlockRegex = new RegExp(codeBlockPattern, 'g');
-            content = content.replace(codeBlockRegex, '<pre><code>$1</code></pre>');
-            const inlineCodePattern = backtick + '([^' + backtick + ']+)' + backtick;
+            content = content.replace(codeBlockRegex, (match, code) => {
+                // Clean up the code content
+                const cleanCode = code.trim();
+                return '<pre><code>' + cleanCode + '</code></pre>';
+            });
+            
+            // Then inline code (single backticks, but not inside code blocks)
+            const inlineCodePattern = backtick + '([^' + backtick + '\\n]+)' + backtick;
             const inlineCodeRegex = new RegExp(inlineCodePattern, 'g');
             content = content.replace(inlineCodeRegex, '<code>$1</code>');
+            
+            // Finally, replace newlines (but not inside code blocks)
+            // Split by code blocks, replace newlines in text parts only
+            const parts = content.split(/(<pre><code>[\s\S]*?<\/code><\/pre>)/g);
+            content = parts.map((part, index) => {
+                if (part.match(/^<pre><code>[\s\S]*?<\/code><\/pre>$/)) {
+                    // This is a code block, keep as is
+                    return part;
+                } else {
+                    // This is text, replace newlines
+                    return part.replace(/\n/g, '<br>');
+                }
+            }).join('');
             
             contentDiv.innerHTML = content;
             
