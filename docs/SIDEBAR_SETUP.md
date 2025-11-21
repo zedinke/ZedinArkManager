@@ -25,13 +25,16 @@ scp ai_developer@135.181.165.27:~/ZedinArkManager/extension/zedinark-manager-1.0
 **VS Code-ban vagy Cursor-ban:**
 
 1. **Töröld a régi extension-t** (ha van):
-   - `Ctrl+Shift+X` → Keresés: `ZedinArk Manager` → Uninstall
-   - Újraindítás
+   - `Ctrl+Shift+X` (Extensions panel megnyitása)
+   - Keresés: `ZedinArk Manager`
+   - Kattints az "Uninstall" gombra
+   - **Újraindítás** (Fontos!)
 
 2. **Telepítsd az új VSIX-et**:
-   - `Ctrl+Shift+P` → `Extensions: Install from VSIX...`
-   - Válaszd ki a `zedinark-manager-1.0.0.vsix` fájlt
-   - Újraindítás
+   - `Ctrl+Shift+P` → Írd be: `Extensions: Install from VSIX...`
+   - Válaszd ki a letöltött `zedinark-manager-1.0.0.vsix` fájlt
+   - Várj, amíg települ
+   - **Újraindítás** (Fontos!)
 
 ### 3. Sidebar Chat megnyitása
 
