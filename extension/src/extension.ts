@@ -15,6 +15,15 @@ export function activate(context: vscode.ExtensionContext) {
     
     api = new ZedinArkAPI(apiUrl, apiKey);
 
+    // Sidebar chat view - regisztrálás azonnal
+    const sidebarProvider = new SidebarChatViewProvider(context.extensionUri, api);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            SidebarChatViewProvider.viewType,
+            sidebarProvider
+        )
+    );
+
     // Commandok regisztrálása
     const connectCommand = vscode.commands.registerCommand('zedinark.connect', async () => {
         const url = await vscode.window.showInputBox({
@@ -191,15 +200,6 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     });
-
-    // Sidebar chat view
-    const sidebarProvider = new SidebarChatViewProvider(context.extensionUri, api);
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(
-            SidebarChatViewProvider.viewType,
-            sidebarProvider
-        )
-    );
 
     context.subscriptions.push(connectCommand, chatCommand, chatPanelCommand, generateCommand, explainCommand, refactorCommand);
 }
