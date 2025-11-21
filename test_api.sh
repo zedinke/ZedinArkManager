@@ -4,6 +4,7 @@
 set -e
 
 API_URL="http://localhost:8000"
+TIMEOUT=60  # Timeout másodpercekben
 
 echo "========================================="
 echo "ZedinArkManager API Teszt"
@@ -18,7 +19,7 @@ NC='\033[0m'
 
 # 1. Health check
 echo "1. Health check..."
-if curl -s "$API_URL/health" > /dev/null; then
+if curl -s --max-time 10 "$API_URL/health" > /dev/null; then
     echo -e "${GREEN}✅ Health check OK${NC}"
     curl -s "$API_URL/health" | python3 -m json.tool
 else
@@ -31,7 +32,7 @@ echo ""
 
 # 2. Root endpoint
 echo "2. Root endpoint..."
-if curl -s "$API_URL/" > /dev/null; then
+if curl -s --max-time 10 "$API_URL/" > /dev/null; then
     echo -e "${GREEN}✅ Root endpoint OK${NC}"
 else
     echo -e "${RED}❌ Root endpoint FAILED${NC}"
@@ -41,7 +42,7 @@ echo ""
 
 # 3. API kulcs generálása
 echo "3. API kulcs generálása..."
-RESPONSE=$(curl -s -X POST "$API_URL/api/auth/generate" \
+RESPONSE=$(curl -s --max-time 10 -X POST "$API_URL/api/auth/generate" \
   -H "Content-Type: application/json" \
   -d '{"name": "Test Key", "description": "Test API Key"}')
 
@@ -61,7 +62,7 @@ echo ""
 
 # 4. Modellek listázása
 echo "4. Modellek listázása..."
-if curl -s "$API_URL/api/models" > /dev/null; then
+if curl -s --max-time 10 "$API_URL/api/models" > /dev/null; then
     echo -e "${GREEN}✅ Modellek listázás OK${NC}"
     curl -s "$API_URL/api/models" | python3 -m json.tool
 else
@@ -73,21 +74,32 @@ echo ""
 # 5. Chat teszt (ha API key van)
 if [ ! -z "$API_KEY" ]; then
     echo "5. Chat teszt (API kulccsal)..."
-    CHAT_RESPONSE=$(curl -s -X POST "$API_URL/api/chat" \
+    echo -e "${YELLOW}⏳ Várakozás a válaszra (max 60 másodperc)...${NC}"
+    
+    CHAT_RESPONSE=$(curl -s --max-time 60 -X POST "$API_URL/api/chat" \
       -H "Content-Type: application/json" \
       -H "X-API-Key: $API_KEY" \
       -d '{
         "messages": [
-          {"role": "user", "content": "Hello! Say hello back in Hungarian."}
-        ]
-      }')
+          {"role": "user", "content": "Hello! Say hello back in Hungarian in one sentence."}
+        ],
+        "temperature": 0.7
+      }' 2>&1)
     
-    if echo "$CHAT_RESPONSE" | grep -q "response"; then
+    if [ $? -eq 0 ] && echo "$CHAT_RESPONSE" | grep -q "response"; then
         echo -e "${GREEN}✅ Chat teszt OK${NC}"
-        echo "$CHAT_RESPONSE" | python3 -m json.tool | head -20
+        echo "$CHAT_RESPONSE" | python3 -m json.tool 2>/dev/null | head -30 || echo "$CHAT_RESPONSE" | head -10
+    elif [ $? -eq 28 ]; then
+        echo -e "${RED}❌ Chat teszt timeout (túl hosszú válaszidő)${NC}"
+        echo -e "${YELLOW}ℹ️  Ez normális lehet nagy modelleknél${NC}"
     else
         echo -e "${YELLOW}⚠️  Chat teszt nem sikerült${NC}"
+        echo "Response (első 200 karakter):"
+        echo "$CHAT_RESPONSE" | head -c 200
+        echo ""
     fi
+else
+    echo -e "${YELLOW}⚠️  Chat teszt kihagyva (nincs API kulcs)${NC}"
 fi
 
 echo ""
