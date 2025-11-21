@@ -904,19 +904,19 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                     }
                     break;
                 case 'fileCreated':
-                    addSystemMessage(\`✅ Fájl létrehozva: \${message.filePath}\`);
+                    addSystemMessage(`✅ Fájl létrehozva: ${message.filePath}`);
                     break;
                 case 'fileDeleted':
-                    addSystemMessage(\`🗑️ Fájl törölve: \${message.filePath}\`);
+                    addSystemMessage(`🗑️ Fájl törölve: ${message.filePath}`);
                     break;
                 case 'fileModified':
-                    addSystemMessage(\`✏️ Fájl módosítva: \${message.filePath}\`);
+                    addSystemMessage(`✏️ Fájl módosítva: ${message.filePath}`);
                     break;
                 case 'fileInterpreted':
-                    addMessage('assistant', \`📄 Fájl elemzés: \${message.fileName}\\n\\n\${message.interpretation}\`);
+                    addMessage('assistant', `📄 Fájl elemzés: ${message.fileName}\n\n${message.interpretation}`);
                     break;
                 case 'imageInterpreted':
-                    addMessage('assistant', \`🖼️ Kép elemzés: \${message.imageName}\\n\\n\${message.interpretation}\`);
+                    addMessage('assistant', `🖼️ Kép elemzés: ${message.imageName}\n\n${message.interpretation}`);
                     break;
             }
         });
