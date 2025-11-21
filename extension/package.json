@@ -17,8 +17,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished",
-    "onView:zedinarkChatView"
+    "*"
   ],
   "main": "./out/extension.js",
   "contributes": {

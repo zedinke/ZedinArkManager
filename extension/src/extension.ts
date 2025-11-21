@@ -16,6 +16,7 @@ export function activate(context: vscode.ExtensionContext) {
     api = new ZedinArkAPI(apiUrl, apiKey);
 
     // Sidebar chat view - regisztrálás azonnal
+    console.log('Registering sidebar view provider...');
     const sidebarProvider = new SidebarChatViewProvider(context.extensionUri, api);
     const providerRegistration = vscode.window.registerWebviewViewProvider(
         'zedinarkChatView',
@@ -27,6 +28,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
     context.subscriptions.push(providerRegistration);
+    console.log('Sidebar view provider registered: zedinarkChatView');
 
     // Commandok regisztrálása
     const connectCommand = vscode.commands.registerCommand('zedinark.connect', async () => {
