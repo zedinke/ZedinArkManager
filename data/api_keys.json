@@ -1,0 +1,13 @@
+{
+  "keys": {
+    "9aa4758c9b8697f2af883e11c0c88209d73bfe7c2b53c0ff730c64d8ae8aea32": {
+      "name": "default",
+      "description": "Alapértelmezett kulcs",
+      "created": "2025-11-21T20:07:23.251716",
+      "last_used": null,
+      "usage_count": 0,
+      "active": true
+    }
+  },
+  "updated": "2025-11-21T20:07:23.251716"
+}

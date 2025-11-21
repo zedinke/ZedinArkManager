@@ -2,7 +2,7 @@
 AI Coding Assistant - FastAPI Backend
 Helyi LLM modellekkel működő kódolási asszisztens
 """
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -17,6 +17,7 @@ from core.file_manager import FileManager
 from core.response_cache import ResponseCache
 from core.project_manager import ProjectManager
 from core.conversation_memory import ConversationMemory
+from core.auth import api_key_manager, verify_api_key
 from modules.code_generator import CodeGenerator
 from modules.project_context import ProjectContext
 
@@ -43,7 +44,8 @@ NUM_GPU_LAYERS = os.getenv("OLLAMA_NUM_GPU_LAYERS")
 if NUM_GPU_LAYERS:
     NUM_GPU_LAYERS = int(NUM_GPU_LAYERS)
 else:
-    NUM_GPU_LAYERS = None
+    # GPU manager automatikus detektálás
+    NUM_GPU_LAYERS = gpu_manager.get_ollama_gpu_layers()
 
 NUM_THREADS = os.getenv("OLLAMA_NUM_THREADS")
 if NUM_THREADS:
@@ -136,7 +138,7 @@ class SelectProjectRequest(BaseModel):
 # API Endpoints
 @app.get("/")
 async def root():
-    """Root endpoint"""
+    """Root endpoint (autentikáció nélkül)"""
     return {
         "message": "AI Coding Assistant API",
         "version": "1.0.0",
@@ -149,25 +151,31 @@ async def root():
             "explain": "/api/explain",
             "refactor": "/api/refactor",
             "files": "/api/files",
-            "projects": "/api/projects"
-        }
+            "projects": "/api/projects",
+            "auth": "/api/auth"
+        },
+        "auth_enabled": os.getenv("ENABLE_AUTH", "false").lower() == "true"
     }
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint (autentikáció nélkül)"""
     ollama_connected = llm_service.check_connection()
+    gpu_count = gpu_manager.get_gpu_count()
     return {
         "status": "healthy" if ollama_connected else "degraded",
         "ollama_connected": ollama_connected,
         "base_path": BASE_PATH,
-        "default_model": DEFAULT_MODEL
+        "default_model": DEFAULT_MODEL,
+        "auth_enabled": os.getenv("ENABLE_AUTH", "false").lower() == "true",
+        "gpu_count": gpu_count,
+        "gpu_layers": NUM_GPU_LAYERS
     }
 
 
 @app.get("/api/models")
-async def list_models():
+async def list_models(api_key: Optional[str] = Security(verify_api_key)):
     """Telepített modellek listázása"""
     try:
         models = llm_service.list_models()
@@ -182,7 +190,7 @@ async def list_models():
 
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, api_key: Optional[str] = Security(verify_api_key)):
     """Chat endpoint"""
     try:
         messages = [
@@ -247,7 +255,7 @@ A kódot mindig ``` nyelv formátumban add vissza."""
 
 
 @app.post("/api/chat/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(request: ChatRequest, api_key: Optional[str] = Security(verify_api_key)):
     """Stream chat endpoint"""
     try:
         messages = [
@@ -273,7 +281,7 @@ async def chat_stream(request: ChatRequest):
 
 
 @app.post("/api/generate")
-async def generate_code(request: GenerateCodeRequest):
+async def generate_code(request: GenerateCodeRequest, api_key: Optional[str] = Security(verify_api_key)):
     """Kód generálás"""
     try:
         cached_code = None
@@ -318,7 +326,7 @@ async def generate_code(request: GenerateCodeRequest):
 
 
 @app.post("/api/edit")
-async def edit_code(request: EditCodeRequest):
+async def edit_code(request: EditCodeRequest, api_key: Optional[str] = Security(verify_api_key)):
     """Kód szerkesztés"""
     try:
         result = code_generator.edit_code(
@@ -342,7 +350,7 @@ async def edit_code(request: EditCodeRequest):
 
 
 @app.get("/api/explain/{file_path:path}")
-async def explain_code(file_path: str, model: Optional[str] = None):
+async def explain_code(file_path: str, model: Optional[str] = None, api_key: Optional[str] = Security(verify_api_key)):
     """Kód magyarázata"""
     try:
         result = code_generator.explain_code(
@@ -365,7 +373,7 @@ async def explain_code(file_path: str, model: Optional[str] = None):
 
 
 @app.post("/api/refactor")
-async def refactor_code(request: RefactorRequest):
+async def refactor_code(request: RefactorRequest, api_key: Optional[str] = Security(verify_api_key)):
     """Kód refaktorálás"""
     try:
         result = code_generator.refactor_code(
@@ -391,7 +399,7 @@ async def refactor_code(request: RefactorRequest):
 
 # Fájl műveletek
 @app.get("/api/files/{file_path:path}")
-async def read_file_endpoint(file_path: str):
+async def read_file_endpoint(file_path: str, api_key: Optional[str] = Security(verify_api_key)):
     """Fájl olvasása"""
     try:
         result = file_manager.read_file(file_path)
@@ -416,7 +424,7 @@ async def read_file_endpoint(file_path: str):
 
 
 @app.post("/api/files")
-async def write_file_endpoint(request: WriteFileRequest):
+async def write_file_endpoint(request: WriteFileRequest, api_key: Optional[str] = Security(verify_api_key)):
     """Fájl írása"""
     try:
         result = file_manager.write_file(
@@ -440,7 +448,7 @@ async def write_file_endpoint(request: WriteFileRequest):
 
 
 @app.delete("/api/files/{file_path:path}")
-async def delete_file_endpoint(file_path: str):
+async def delete_file_endpoint(file_path: str, api_key: Optional[str] = Security(verify_api_key)):
     """Fájl törlése"""
     try:
         result = file_manager.delete_file(file_path)
@@ -457,7 +465,7 @@ async def delete_file_endpoint(file_path: str):
 
 
 @app.get("/api/files")
-async def list_files_endpoint(dir_path: str = ".", recursive: bool = False):
+async def list_files_endpoint(dir_path: str = ".", recursive: bool = False, api_key: Optional[str] = Security(verify_api_key)):
     """Könyvtár tartalmának listázása"""
     try:
         result = file_manager.list_directory(dir_path, recursive=recursive)
@@ -479,7 +487,7 @@ async def list_files_endpoint(dir_path: str = ".", recursive: bool = False):
 
 # Projekt műveletek
 @app.get("/api/projects")
-async def list_projects():
+async def list_projects(api_key: Optional[str] = Security(verify_api_key)):
     """Projektek listázása"""
     try:
         projects = project_manager.list_projects()
@@ -494,7 +502,7 @@ async def list_projects():
 
 
 @app.post("/api/projects/create")
-async def create_project(request: CreateProjectRequest):
+async def create_project(request: CreateProjectRequest, api_key: Optional[str] = Security(verify_api_key)):
     """Új projekt létrehozása"""
     try:
         result = project_manager.create_project(
@@ -513,7 +521,7 @@ async def create_project(request: CreateProjectRequest):
 
 
 @app.post("/api/projects/select")
-async def select_project(request: SelectProjectRequest):
+async def select_project(request: SelectProjectRequest, api_key: Optional[str] = Security(verify_api_key)):
     """Projekt kiválasztása"""
     try:
         success = project_manager.set_current_project(request.name)
@@ -532,7 +540,7 @@ async def select_project(request: SelectProjectRequest):
 
 
 @app.get("/api/projects/current")
-async def get_current_project():
+async def get_current_project(api_key: Optional[str] = Security(verify_api_key)):
     """Aktuális projekt lekérése"""
     try:
         current = project_manager.get_current_project()
@@ -545,7 +553,7 @@ async def get_current_project():
 
 
 @app.get("/api/project/structure")
-async def get_project_structure(max_depth: int = 3):
+async def get_project_structure(max_depth: int = 3, api_key: Optional[str] = Security(verify_api_key)):
     """Projekt struktúra lekérése"""
     try:
         structure = project_context.get_project_structure(max_depth=max_depth)
@@ -557,7 +565,8 @@ async def get_project_structure(max_depth: int = 3):
 
 @app.get("/api/project/context")
 async def get_project_context_endpoint(file_path: Optional[str] = None, 
-                              include_related: bool = True):
+                              include_related: bool = True,
+                              api_key: Optional[str] = Security(verify_api_key)):
     """Projekt kontextus lekérése"""
     try:
         if file_path:
@@ -574,7 +583,7 @@ async def get_project_context_endpoint(file_path: Optional[str] = None,
 
 
 @app.get("/api/project/search")
-async def search_files(query: str, limit: int = 10):
+async def search_files(query: str, limit: int = 10, api_key: Optional[str] = Security(verify_api_key)):
     """Fájlok keresése"""
     try:
         files = project_context.get_relevant_files(query, limit=limit)
@@ -590,7 +599,7 @@ async def search_files(query: str, limit: int = 10):
 
 # Memória és cache endpointok
 @app.get("/api/memory/summary")
-async def get_memory_summary():
+async def get_memory_summary(api_key: Optional[str] = Security(verify_api_key)):
     """Beszélgetési memória összefoglaló"""
     try:
         summary = conversation_memory.get_summary()
@@ -604,7 +613,7 @@ async def get_memory_summary():
 
 
 @app.post("/api/memory/clear")
-async def clear_memory():
+async def clear_memory(api_key: Optional[str] = Security(verify_api_key)):
     """Beszélgetési memória törlése"""
     try:
         conversation_memory.clear()
@@ -615,13 +624,119 @@ async def clear_memory():
 
 
 @app.post("/api/cache/clear")
-async def clear_cache():
+async def clear_cache(api_key: Optional[str] = Security(verify_api_key)):
     """Response cache törlése"""
     try:
         response_cache.clear()
         return {"status": "cleared", "message": "Cache törölve"}
     except Exception as e:
         logger.error(f"Clear cache error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Autentikációs endpointok
+class GenerateKeyRequest(BaseModel):
+    name: str = Field(..., description="Kulcs neve")
+    description: str = Field("", description="Kulcs leírása")
+
+
+@app.post("/api/auth/generate")
+async def generate_api_key(request: GenerateKeyRequest):
+    """API kulcs generálása (admin)"""
+    try:
+        api_key = api_key_manager.generate_key(request.name, request.description)
+        return {
+            "success": True,
+            "api_key": api_key,  # Csak egyszer mutatjuk meg!
+            "name": request.name,
+            "warning": "Mentsd el ezt a kulcsot biztonságos helyre, mert nem fogod újra látni!"
+        }
+    except Exception as e:
+        logger.error(f"Generate API key error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/auth/keys")
+async def list_api_keys(api_key: Optional[str] = Security(verify_api_key)):
+    """API kulcsok listázása (névvel és statisztikákkal)"""
+    try:
+        keys = api_key_manager.list_keys()
+        return {
+            "keys": keys,
+            "count": len(keys)
+        }
+    except Exception as e:
+        logger.error(f"List API keys error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/auth/revoke")
+async def revoke_api_key(api_key_to_revoke: str = Field(..., description="Visszavonandó API kulcs"), 
+                        api_key: Optional[str] = Security(verify_api_key)):
+    """API kulcs visszavonása"""
+    try:
+        success = api_key_manager.revoke_key(api_key_to_revoke)
+        if success:
+            return {"success": True, "message": "API kulcs visszavonva"}
+        else:
+            raise HTTPException(status_code=404, detail="API kulcs nem található")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Revoke API key error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/auth/verify")
+async def verify_api_key_endpoint(api_key_to_verify: str = Field(..., description="Ellenőrizendő API kulcs")):
+    """API kulcs ellenőrzése (autentikáció nélkül)"""
+    try:
+        is_valid = api_key_manager.validate_key(api_key_to_verify)
+        return {
+            "valid": is_valid,
+            "message": "Érvényes API kulcs" if is_valid else "Érvénytelen API kulcs"
+        }
+    except Exception as e:
+        logger.error(f"Verify API key error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# GPU kezelési endpointok
+@app.get("/api/gpu/status")
+async def get_gpu_status(api_key: Optional[str] = Security(verify_api_key)):
+    """GPU-k állapotának lekérése"""
+    try:
+        gpus = gpu_manager.get_all_gpus_status()
+        return {
+            "gpus": gpus,
+            "count": len(gpus),
+            "available": len([g for g in gpus if g["status"] == "available"])
+        }
+    except Exception as e:
+        logger.error(f"Get GPU status error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/gpu/available")
+async def get_available_gpu(api_key: Optional[str] = Security(verify_api_key)):
+    """Elérhető GPU lekérése"""
+    try:
+        gpu_index = gpu_manager.get_available_gpu()
+        if gpu_index is not None:
+            gpu_info = gpu_manager.get_gpu_info(gpu_index)
+            if gpu_info:
+                return {
+                    "gpu_index": gpu_index,
+                    "name": gpu_info.name,
+                    "memory_free": gpu_info.memory_total - gpu_info.memory_used,
+                    "utilization": gpu_info.utilization
+                }
+        return {
+            "gpu_index": None,
+            "message": "Nincs elérhető GPU"
+        }
+    except Exception as e:
+        logger.error(f"Get available GPU error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

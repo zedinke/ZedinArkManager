@@ -1,0 +1,80 @@
+{
+  "name": "zedinark-manager",
+  "displayName": "ZedinArk Manager",
+  "description": "AI Coding Assistant - Connect to remote ZedinArk API",
+  "version": "1.0.0",
+  "publisher": "zedinke",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:zedinark.connect",
+    "onCommand:zedinark.chat",
+    "onCommand:zedinark.generate"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "zedinark.connect",
+        "title": "ZedinArk: Connect to Server"
+      },
+      {
+        "command": "zedinark.chat",
+        "title": "ZedinArk: Chat with AI"
+      },
+      {
+        "command": "zedinark.generate",
+        "title": "ZedinArk: Generate Code"
+      },
+      {
+        "command": "zedinark.explain",
+        "title": "ZedinArk: Explain Code"
+      },
+      {
+        "command": "zedinark.refactor",
+        "title": "ZedinArk: Refactor Code"
+      }
+    ],
+    "configuration": {
+      "title": "ZedinArk Manager",
+      "properties": {
+        "zedinark.apiUrl": {
+          "type": "string",
+          "default": "http://135.181.165.27:8000",
+          "description": "ZedinArk API server URL"
+        },
+        "zedinark.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API Key for authentication (optional if ENABLE_AUTH=false)"
+        },
+        "zedinark.model": {
+          "type": "string",
+          "default": "llama3.1:8b",
+          "description": "Default LLM model to use"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "@vscode/vsce": "^2.22.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}
+
