@@ -136,6 +136,12 @@ class SelectProjectRequest(BaseModel):
     name: str = Field(..., description="Projekt neve")
 
 
+class VisionRequest(BaseModel):
+    image: str = Field(..., description="Base64 encoded image")
+    prompt: str = Field(..., description="Prompt for image analysis")
+    model: Optional[str] = Field(None, description="Vision model name (e.g., llava)")
+
+
 # API Endpoints
 @app.get("/")
 async def root():
@@ -372,6 +378,58 @@ async def explain_code(file_path: str, model: Optional[str] = None, api_key: Opt
         raise
     except Exception as e:
         logger.error(f"Explain code error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/vision")
+async def analyze_image(request: VisionRequest, api_key: Optional[str] = Security(verify_api_key)):
+    """Kép értelmezése vision modellel"""
+    try:
+        import base64
+        from io import BytesIO
+        from PIL import Image
+        
+        # Base64 kép dekódolása
+        try:
+            image_data = base64.b64decode(request.image)
+            image = Image.open(BytesIO(image_data))
+            
+            # Kép információ
+            image_info = {
+                "format": image.format,
+                "size": image.size,
+                "mode": image.mode
+            }
+            
+            # Vision model hívása (ha van)
+            # Jelenleg egyszerű válasz, mert nincs vision model telepítve
+            model = request.model or "llava"
+            
+            # TODO: Implement vision model call when available
+            # For now, return basic image info
+            response_text = f"""Kép elemzése:
+
+Formátum: {image_info['format']}
+Méret: {image_info['size'][0]}x{image_info['size'][1]} pixel
+Mód: {image_info['mode']}
+
+Prompt: {request.prompt}
+
+Megjegyzés: Vision model ({model}) még nincs teljesen implementálva. 
+A kép sikeresen feldolgozva, de részletes elemzéshez telepítsd a vision modelt (pl. llava)."""
+            
+            return {
+                "response": response_text,
+                "image_info": image_info,
+                "model": model
+            }
+        except Exception as img_error:
+            return {
+                "response": f"Kép feldolgozási hiba: {str(img_error)}",
+                "error": str(img_error)
+            }
+    except Exception as e:
+        logger.error(f"Vision analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -4,9 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -22,6 +19,14 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+ai_venv/
+.venv/
 
 # IDE
 .vscode/
@@ -34,29 +39,32 @@ wheels/
 .env
 .env.local
 
-# Data and cache
-data/cache/*
-!data/cache/.gitkeep
-data/memory/*
-!data/memory/.gitkeep
-
 # Logs
-logs/*
-!logs/.gitkeep
+logs/
 *.log
+
+# Data
+data/
+projects/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Projects (user generated)
-projects/*
-!projects/.gitkeep
+# Node modules (extension)
+extension/node_modules/
+extension/out/
+extension/*.vsix
+extension/.vscode-test/
+
+# Build artifacts
+*.pyc
+*.pyo
+*.pyd
+
+# Ollama models (large files)
+models/
 
 # Temporary files
 *.tmp
 *.temp
-
-# Docker
-.dockerignore
-
