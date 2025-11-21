@@ -145,8 +145,9 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "health": "/health",
+            "docs": "/docs",
             "models": "/api/models",
-            "chat": "/api/chat",
+            "chat": "/api/chat (POST only)",
             "generate": "/api/generate",
             "edit": "/api/edit",
             "explain": "/api/explain",
@@ -155,7 +156,8 @@ async def root():
             "projects": "/api/projects",
             "auth": "/api/auth"
         },
-        "auth_enabled": os.getenv("ENABLE_AUTH", "false").lower() == "true"
+        "auth_enabled": os.getenv("ENABLE_AUTH", "false").lower() == "true",
+        "note": "A böngészőben használd a /docs oldalt az API teszteléséhez! Az /api/chat csak POST kérést fogad el."
     }
 
 
