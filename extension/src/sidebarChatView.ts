@@ -1108,13 +1108,15 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             });
             
             // Then inline code (single backticks, but not inside code blocks)
-            const inlineCodePattern = backtick + '([^' + backtick + '\\n]+)' + backtick;
+            const singleBacktick = backtick;
+            const inlineCodePattern = singleBacktick + '([^' + singleBacktick + '\\n]+)' + singleBacktick;
             const inlineCodeRegex = new RegExp(inlineCodePattern, 'g');
             content = content.replace(inlineCodeRegex, '<code>$1</code>');
             
             // Finally, replace newlines (but not inside code blocks)
             // Split by code blocks, replace newlines in text parts only
-            const parts = content.split(/(<pre><code>[\s\S]*?<\/code><\/pre>)/g);
+            const codeBlockRegex2 = /(<pre><code>[\s\S]*?<\/code><\/pre>)/g;
+            const parts = content.split(codeBlockRegex2);
             content = parts.map(function(part) {
                 if (part.match(/^<pre><code>[\s\S]*?<\/code><\/pre>$/)) {
                     // This is a code block, keep as is
