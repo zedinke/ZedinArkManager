@@ -761,7 +761,7 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                 
                 // Mode change notification
                 const modeText = currentMode === 'agent' ? 'Agent (autonóm)' : currentMode === 'edit' ? 'Edit (szerkesztés)' : 'Ask (kérdés-válasz)';
-                addSystemMessage(`Mód váltva: ${modeText}`);
+                addSystemMessage('Mód váltva: ' + modeText);
             });
         });
 
@@ -791,7 +791,7 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                         fileData: base64,
                         fileName: file.name
                     });
-                    addSystemMessage(`📄 Fájl feltöltve: ${file.name}`);
+                    addSystemMessage('📄 Fájl feltöltve: ' + file.name);
                 };
                 reader.readAsDataURL(file);
             }
@@ -810,7 +810,7 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                         imageData: base64,
                         imageName: file.name
                     });
-                    addSystemMessage(`🖼️ Kép feltöltve: ${file.name}`);
+                    addSystemMessage('🖼️ Kép feltöltve: ' + file.name);
                 };
                 reader.readAsDataURL(file);
             }
@@ -818,7 +818,7 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
 
         function addMessage(role, content) {
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${role}`;
+            messageDiv.className = 'message ' + role;
             
             const roleDiv = document.createElement('div');
             roleDiv.className = 'message-role';
@@ -829,10 +829,10 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             
             // Markdown-like formatting
             content = escapeHtml(content);
-            content = content.replace(/\n/g, '<br>');
-            const codeBlockRegex = new RegExp('```([\\s\\S]*?)```', 'g');
+            content = content.replace(/\\n/g, '<br>');
+            const codeBlockRegex = new RegExp('\\\\`\\\\`\\\\`([\\\\s\\\\S]*?)\\\\`\\\\`\\\\`', 'g');
             content = content.replace(codeBlockRegex, '<pre><code>$1</code></pre>');
-            const inlineCodeRegex = new RegExp('`([^`]+)`', 'g');
+            const inlineCodeRegex = new RegExp('\\\\`([^\\\\`]+)\\\\`', 'g');
             content = content.replace(inlineCodeRegex, '<code>$1</code>');
             
             contentDiv.innerHTML = content;
