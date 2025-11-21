@@ -4,7 +4,7 @@
 set -e
 
 API_URL="http://localhost:8000"
-TIMEOUT=60  # Timeout másodpercekben
+TIMEOUT=180  # Timeout másodpercekben (3 perc - nagy modellekhez)
 
 echo "========================================="
 echo "ZedinArkManager API Teszt"
@@ -74,15 +74,17 @@ echo ""
 # 5. Chat teszt (ha API key van)
 if [ ! -z "$API_KEY" ]; then
     echo "5. Chat teszt (API kulccsal)..."
-    echo -e "${YELLOW}⏳ Várakozás a válaszra (max 60 másodperc)...${NC}"
+    echo -e "${YELLOW}⏳ Várakozás a válaszra (max 180 másodperc / 3 perc)...${NC}"
+    echo -e "${YELLOW}ℹ️  Az LLM válasz generálása 30-120 másodperc is eltarthat nagy modelleknél${NC}"
     
-    CHAT_RESPONSE=$(curl -s --max-time 60 -X POST "$API_URL/api/chat" \
+    CHAT_RESPONSE=$(curl -s --max-time $TIMEOUT -X POST "$API_URL/api/chat" \
       -H "Content-Type: application/json" \
       -H "X-API-Key: $API_KEY" \
       -d '{
         "messages": [
           {"role": "user", "content": "Hello! Say hello back in Hungarian in one sentence."}
         ],
+        "model": "phi3:mini",
         "temperature": 0.7
       }' 2>&1)
     
