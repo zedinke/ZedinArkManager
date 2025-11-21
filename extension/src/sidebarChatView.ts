@@ -830,9 +830,12 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             // Markdown-like formatting
             content = escapeHtml(content);
             content = content.replace(/\\n/g, '<br>');
-            const codeBlockRegex = new RegExp('```([\\\\s\\\\S]*?)```', 'g');
+            const backtick = String.fromCharCode(96);
+            const codeBlockPattern = backtick + backtick + backtick + '([\\s\\S]*?)' + backtick + backtick + backtick;
+            const codeBlockRegex = new RegExp(codeBlockPattern, 'g');
             content = content.replace(codeBlockRegex, '<pre><code>$1</code></pre>');
-            const inlineCodeRegex = new RegExp('`([^`]+)`', 'g');
+            const inlineCodePattern = backtick + '([^' + backtick + ']+)' + backtick;
+            const inlineCodeRegex = new RegExp(inlineCodePattern, 'g');
             content = content.replace(inlineCodeRegex, '<code>$1</code>');
             
             contentDiv.innerHTML = content;
