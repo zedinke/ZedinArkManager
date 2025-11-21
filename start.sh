@@ -59,6 +59,24 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
+# Virtuális környezet ellenőrzése és aktiválása
+if [ -d "ai_venv" ]; then
+    echo "✅ Virtuális környezet találva (ai_venv)"
+    echo "📝 Aktiválás..."
+    source ai_venv/bin/activate
+    
+    # Ellenőrzés, hogy aktiválva van-e
+    if [[ "$VIRTUAL_ENV" != "" ]]; then
+        echo "✅ Virtuális környezet aktív: $VIRTUAL_ENV"
+    else
+        echo "⚠️  Virtuális környezet aktiválása sikertelen, folytatás rendszer Python-nal"
+    fi
+else
+    echo "⚠️  Virtuális környezet (ai_venv) nem található"
+    echo "   Folytatás rendszer Python-nal"
+    echo "   Használd: python3 -m venv ai_venv && source ai_venv/bin/activate"
+fi
+
 # Függőségek ellenőrzése
 echo "🔍 Függőségek ellenőrzése..."
 if ! python3 -c "import fastapi" 2>/dev/null; then
@@ -90,6 +108,6 @@ echo "Leállítás: Ctrl+C"
 echo "========================================="
 echo ""
 
-# FastAPI indítása
+# FastAPI indítása (virtuális környezetben, ha aktív)
 python3 main.py
 

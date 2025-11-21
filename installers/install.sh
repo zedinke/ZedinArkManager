@@ -22,6 +22,29 @@ fi
 echo "📁 Könyvtárak létrehozása..."
 mkdir -p logs data/cache data/memory projects
 
+# Virtuális környezet ellenőrzése
+if [ -d "../ai_venv" ]; then
+    echo "✅ Virtuális környezet találva (ai_venv)"
+    echo "📝 Aktiválás..."
+    source ../ai_venv/bin/activate
+    
+    if [[ "$VIRTUAL_ENV" != "" ]]; then
+        echo "✅ Virtuális környezet aktív: $VIRTUAL_ENV"
+    fi
+elif [ -d "ai_venv" ]; then
+    echo "✅ Virtuális környezet találva (ai_venv)"
+    echo "📝 Aktiválás..."
+    source ai_venv/bin/activate
+    
+    if [[ "$VIRTUAL_ENV" != "" ]]; then
+        echo "✅ Virtuális környezet aktív: $VIRTUAL_ENV"
+    fi
+else
+    echo "⚠️  Virtuális környezet (ai_venv) nem található"
+    echo "   Telepítés rendszer Python-ba történik"
+    echo "   Használd: python3 -m venv ai_venv && source ai_venv/bin/activate"
+fi
+
 # Python függőségek telepítése
 echo "📦 Python függőségek telepítése..."
 pip3 install --upgrade pip

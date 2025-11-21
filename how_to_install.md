@@ -8,7 +8,7 @@ Ha **Docker már telepítve van** a gépeden és más programok is használják:
 - ✅ **NEM** telepítjük újra a Docker-t
 - ✅ **NEM** állítjuk le a meglévő konténereket
 - ✅ Használhatod a **Docker telepítési opciót** (alább)
-- ✅ Vagy folytathatod a **hagyományos telepítéssel** (Python közvetlenül)
+- ✅ Vagy folytathatod a **hagyományos telepítéssel** (Python virtuális környezet)
 
 ### 1. lépés: Rendszerfrissítés
 
@@ -27,22 +27,13 @@ sudo apt upgrade -y
 - ✅ Nem érinti a meglévő rendszert
 - 👉 [Ugrás a Docker telepítéshez](#-docker-telepítés-opció-a)
 
-#### Opció B: Hagyományos telepítés (Python közvetlenül)
+#### Opció B: Hagyományos telepítés (Python virtuális környezet)
+- ✅ Meglévő `ai_venv` virtuális környezet használata
 - ✅ Közvetlen hozzáférés
 - ✅ Egyszerűbb hibakeresés
 - 👉 [Ugrás a hagyományos telepítéshez](#-hagyományos-telepítés-opció-b)
 
-### 3. lépés: Python telepítése/ellenőrzése (csak Opció B-hez)
-
-```bash
-# Python verzió ellenőrzése
-python3 --version
-
-# Ha nincs telepítve Python 3.8 vagy újabb:
-sudo apt install python3 python3-pip python3-venv -y
-```
-
-### 4. lépés: Git telepítése/ellenőrzése
+### 3. lépés: Git telepítése/ellenőrzése
 
 ```bash
 # Git ellenőrzése
@@ -102,11 +93,10 @@ docker-compose logs -f
 ### 5. lépés: Modell telepítése
 
 ```bash
-# Ollama konténerbe belépés
-docker exec -it zedinark-ollama ollama pull llama3.1:8b
-
-# Vagy közvetlenül
+# Ollama konténerbe belépés és modell telepítése
 docker-compose exec ollama ollama pull llama3.1:8b
+
+# Ez időbe telhet (~4-5GB letöltés)
 ```
 
 ### 6. lépés: Ellenőrzés
@@ -119,34 +109,7 @@ curl http://localhost:8000/health
 docker-compose ps
 ```
 
-### Docker használat
-
-**Konténerek indítása:**
-```bash
-cd installers
-docker-compose up -d
-```
-
-**Konténerek leállítása:**
-```bash
-docker-compose down
-```
-
-**Logok megtekintése:**
-```bash
-docker-compose logs -f api      # API logok
-docker-compose logs -f ollama   # Ollama logok
-```
-
-**Konténerek újraindítása:**
-```bash
-docker-compose restart
-```
-
-**Frissítés (új build):**
-```bash
-docker-compose up -d --build
-```
+**További információk:** Lásd `docs/DOCKER_INSTALL.md`
 
 ---
 
@@ -162,23 +125,45 @@ git clone https://github.com/zedinke/ZedinArkManager.git
 cd ZedinArkManager
 ```
 
-### 2. lépés: Automatikus telepítő futtatása
+### 2. lépés: Python virtuális környezet aktiválása
+
+**A meglévő `ai_venv` virtuális környezet használata:**
+
+```bash
+# Aktiváld a meglévő virtuális környezetet
+source ai_venv/bin/activate
+
+# Ellenőrzés - a prompt elé kerüljön a (ai_venv)
+# Példa: (ai_venv) user@server:~/ZedinArkManager$
+```
+
+**Ha nincs még `ai_venv` virtuális környezet:**
+
+```bash
+# Virtuális környezet létrehozása (ha még nincs)
+python3 -m venv ai_venv
+
+# Aktiválás
+source ai_venv/bin/activate
+```
+
+### 3. lépés: Automatikus telepítő futtatása
 
 ```bash
 # Telepítő script futtathatóvá tétele
 chmod +x installers/install.sh
 
-# Telepítő futtatása
+# Telepítő futtatása (virtuális környezetben!)
 ./installers/install.sh
 ```
 
 **Mit csinál a telepítő?**
 - ✅ Létrehozza a szükséges mappákat (`logs`, `data`, `projects`)
-- ✅ Telepíti a Python függőségeket
+- ✅ Telepíti a Python függőségeket a virtuális környezetbe
 - ✅ Ellenőrzi az Ollama telepítését
 - ✅ Létrehozza a `.env` konfigurációs fájlt
 
-### 3. lépés: Ollama telepítése
+### 4. lépés: Ollama telepítése (ha még nincs)
 
 **Ha még nincs telepítve az Ollama:**
 
@@ -194,7 +179,7 @@ curl https://ollama.com/install.sh | sh
 ollama --version
 ```
 
-### 4. lépés: Ollama indítása
+### 5. lépés: Ollama indítása
 
 **Opció 1: Hátérben indítás (ajánlott)**
 
@@ -213,11 +198,16 @@ curl http://localhost:11434/api/tags
 ollama serve
 ```
 
-### 5. lépés: Modell telepítése
+### 6. lépés: Modell telepítése
+
+**Fontos:** A modell telepítéshez az Ollama-nak futnia kell!
 
 ```bash
 # A magyarul jól beszélő modell letöltése (~4-5GB, ez időbe telhet)
 ollama pull llama3.1:8b
+
+# Ellenőrzés
+ollama list
 ```
 
 **Alternatív modellek (ha szükséges):**
@@ -228,17 +218,7 @@ ollama pull mistral         # Kisebb, gyorsabb modell
 ollama pull deepseek-coder  # Code generation modell
 ```
 
-**Ellenőrzés, hogy telepítve van-e:**
-
-```bash
-# Telepített modellek listázása
-ollama list
-
-# Vagy
-curl http://localhost:11434/api/tags
-```
-
-### 6. lépés: Környezeti változók beállítása
+### 7. lépés: Környezeti változók beállítása
 
 **Szerkeszd a `.env` fájlt (ha szükséges):**
 
@@ -270,15 +250,18 @@ export PROJECT_BASE_PATH="."
 export OLLAMA_NUM_THREADS="32"
 ```
 
-### 7. lépés: Rendszer indítása
+### 8. lépés: Rendszer indítása
 
-**Indító script használata (ajánlott):**
+**Fontos:** A virtuális környezetnek aktiválva kell lennie!
 
 ```bash
+# Győződj meg róla, hogy a virtuális környezet aktív
+source ai_venv/bin/activate
+
 # Indító script futtathatóvá tétele
 chmod +x start.sh
 
-# Rendszer indítása
+# Rendszer indítása (virtuális környezetben!)
 ./start.sh
 ```
 
@@ -289,7 +272,7 @@ chmod +x start.sh
 - ✅ Betölti a környezeti változókat (`.env` fájlból)
 - ✅ Indítja a FastAPI szervert
 
-### 8. lépés: Ellenőrzés, hogy minden működik
+### 9. lépés: Ellenőrzés, hogy minden működik
 
 **1. Health check (terminálból):**
 
@@ -331,101 +314,62 @@ Ha minden lépés sikeres volt, a rendszer most fut és elérhető:
 
 ---
 
-## 🔧 Manuális telepítés (ha az automatikus nem működik)
+## 🔧 Későbbi használat (hagyományos telepítés)
 
-### 1. Python függőségek telepítése
+### Rendszer indítása
 
-```bash
-# pip frissítése
-pip3 install --upgrade pip
-
-# Függőségek telepítése
-pip3 install -r installers/requirements.txt
-```
-
-### 2. Mappák létrehozása
+**Fontos:** Mindig aktiváld a virtuális környezetet!
 
 ```bash
-mkdir -p logs data/cache data/memory projects
-```
+# Aktiváld a virtuális környezetet
+source ai_venv/bin/activate
 
-### 3. FastAPI szerver indítása (manuálisan)
-
-```bash
-# Közvetlenül Python-nal
-python3 main.py
-
-# Vagy uvicorn-nel
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
----
-
-## 🏃 Rendszer indítása (későbbi használat)
-
-### Gyors indítás
-
-```bash
+# Rendszer indítása
 ./start.sh
+```
+
+### Rendszer leállítása
+
+```bash
+# Ctrl+C a terminálban, ahol fut
+# Vagy ha hátérben fut:
+ps aux | grep "python.*main.py"
+kill <PID>
 ```
 
 ### Hátérben indítás
 
 ```bash
+# Aktiváld a virtuális környezetet
+source ai_venv/bin/activate
+
 # Ollama hátérben (ha még nem fut)
 nohup ollama serve > logs/ollama.log 2>&1 &
 
 # FastAPI hátérben
 nohup python3 main.py > logs/app.log 2>&1 &
-```
 
-### Systemd szolgáltatásként (éles környezet)
-
-**1. Szolgáltatás fájl létrehozása:**
-
-```bash
-sudo nano /etc/systemd/system/zedinarkmanager.service
-```
-
-**2. Tartalom:**
-
-```ini
-[Unit]
-Description=ZedinArkManager API Server
-After=network.target
-
-[Service]
-Type=simple
-User=your-username
-WorkingDirectory=/home/your-username/ZedinArkManager
-EnvironmentFile=/home/your-username/ZedinArkManager/.env
-ExecStart=/usr/bin/python3 /home/your-username/ZedinArkManager/main.py
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**3. Szolgáltatás aktiválása:**
-
-```bash
-# Systemd újratöltése
-sudo systemctl daemon-reload
-
-# Szolgáltatás engedélyezése (indulás rendszerindításkor)
-sudo systemctl enable zedinarkmanager
-
-# Szolgáltatás indítása
-sudo systemctl start zedinarkmanager
-
-# Állapot ellenőrzése
-sudo systemctl status zedinarkmanager
+# PID mentése (később leállításhoz)
+echo $! > logs/api.pid
 ```
 
 ---
 
 ## 🔍 Hibaelhárítás
+
+### Virtuális környezet problémák
+
+```bash
+# Aktiválás ellenőrzése
+which python3
+# Válasz: /path/to/ai_venv/bin/python3
+
+# Ha nem jó, aktiváld újra
+source ai_venv/bin/activate
+
+# Függőségek újratelepítése
+pip3 install -r installers/requirements.txt
+```
 
 ### Ollama nem fut
 
@@ -457,7 +401,7 @@ curl http://localhost:11434/api/tags
 ### Modell nincs telepítve
 
 ```bash
-# Modell telepítése
+# Modell telepítése (Ollama-nak futnia kell!)
 ollama pull llama3.1:8b
 
 # Ellenőrzés
@@ -467,6 +411,9 @@ ollama list
 ### Python függőségek hiányoznak
 
 ```bash
+# Aktiváld a virtuális környezetet
+source ai_venv/bin/activate
+
 # Függőségek telepítése
 pip3 install -r installers/requirements.txt
 
@@ -519,6 +466,7 @@ grep -i error logs/app.log
 - **API dokumentáció**: http://localhost:8000/docs
 - **Projekt struktúra**: `docs/PROJECT_STRUCTURE.md`
 - **Használati útmutató**: `docs/USAGE_GUIDE.md`
+- **Docker telepítés**: `docs/DOCKER_INSTALL.md`
 - **GitHub repository**: https://github.com/zedinke/ZedinArkManager
 
 ---
@@ -528,8 +476,9 @@ grep -i error logs/app.log
 Ha minden lépés sikeres volt, a rendszer most fut és használatra kész!
 
 **Első lépések:**
-1. Nyisd meg: http://localhost:8000/docs
-2. Próbáld ki a `/api/chat` endpoint-ot
-3. Generálj kódot a `/api/generate` endpoint-tal
+1. Aktiváld a virtuális környezetet: `source ai_venv/bin/activate`
+2. Nyisd meg: http://localhost:8000/docs
+3. Próbáld ki a `/api/chat` endpoint-ot
+4. Generálj kódot a `/api/generate` endpoint-tal
 
 **Jó munkát! 🚀**
