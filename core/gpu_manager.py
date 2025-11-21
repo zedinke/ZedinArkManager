@@ -31,7 +31,7 @@ class GPUInfo:
         self.temperature = 0.0
 
 
-class GPUManger:
+class GPUManager:
     """GPU kezelő - több GPU load balancing"""
     
     def __init__(self):
