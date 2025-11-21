@@ -4,6 +4,11 @@
   "description": "AI Coding Assistant - Connect to remote ZedinArk API",
   "version": "1.0.0",
   "publisher": "zedinke",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zedinke/ZedinArkManager.git"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.80.0"
   },
