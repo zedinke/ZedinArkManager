@@ -33,6 +33,7 @@
     "views": {
       "zedinark": [
         {
+          "type": "webview",
           "id": "zedinarkChatView",
           "name": "Chat",
           "when": "true"

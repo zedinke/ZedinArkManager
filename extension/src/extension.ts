@@ -223,7 +223,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    context.subscriptions.push(connectCommand, chatCommand, chatPanelCommand, generateCommand, explainCommand, refactorCommand);
+    context.subscriptions.push(connectCommand, chatCommand, chatPanelCommand, sidebarChatCommand, generateCommand, explainCommand, refactorCommand);
 }
 
 export function deactivate() {}
