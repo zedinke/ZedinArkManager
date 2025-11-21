@@ -383,15 +383,21 @@ async def explain_code(file_path: str, model: Optional[str] = None, api_key: Opt
 
 @app.post("/api/vision")
 async def analyze_image(request: VisionRequest, api_key: Optional[str] = Security(verify_api_key)):
-    """Kép értelmezése vision modellel"""
+    """Kép értelmezése vision modellel (Ollama llava)"""
     try:
         import base64
         from io import BytesIO
         from PIL import Image
+        import requests
         
-        # Base64 kép dekódolása
+        # Base64 kép dekódolása és validálás
         try:
-            image_data = base64.b64decode(request.image)
+            # Tisztítsuk a base64 stringet (eltávolítjuk a data:image prefix-et ha van)
+            image_base64 = request.image
+            if ',' in image_base64:
+                image_base64 = image_base64.split(',', 1)[1]
+            
+            image_data = base64.b64decode(image_base64)
             image = Image.open(BytesIO(image_data))
             
             # Kép információ
@@ -401,32 +407,89 @@ async def analyze_image(request: VisionRequest, api_key: Optional[str] = Securit
                 "mode": image.mode
             }
             
-            # Vision model hívása (ha van)
-            # Jelenleg egyszerű válasz, mert nincs vision model telepítve
+            # Vision model (llava vagy más vision model)
             model = request.model or "llava"
             
-            # TODO: Implement vision model call when available
-            # For now, return basic image info
-            response_text = f"""Kép elemzése:
-
-Formátum: {image_info['format']}
-Méret: {image_info['size'][0]}x{image_info['size'][1]} pixel
-Mód: {image_info['mode']}
-
-Prompt: {request.prompt}
-
-Megjegyzés: Vision model ({model}) még nincs teljesen implementálva. 
-A kép sikeresen feldolgozva, de részletes elemzéshez telepítsd a vision modelt (pl. llava)."""
+            # Ollama vision API hívás
+            # Az Ollama chat API támogatja a képeket images array-ben
+            ollama_url = f"{OLLAMA_URL}/api/chat"
             
-            return {
-                "response": response_text,
-                "image_info": image_info,
-                "model": model
+            # Prompt előkészítése
+            prompt = request.prompt or "Elemezd ezt a képet részletesen. Írd le, mit látsz, milyen objektumok, színek, szövegek vannak rajta, és adj releváns információkat."
+            
+            # Ollama chat API formátum képekkel
+            # Az Ollama API-ban az images array a message-en kívül van, vagy a content-ben lehet
+            # Próbáljuk meg mindkét formátumot támogatni
+            payload = {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt,
+                        "images": [image_base64]  # Base64 string array - ez az Ollama formátum
+                    }
+                ],
+                "stream": False,
+                "options": {
+                    "temperature": 0.7,
+                    "num_predict": 500,
+                    "num_ctx": 4096  # Nagyobb context window a vision modellekre
+                }
             }
+            
+            try:
+                # Ollama API hívás
+                response = requests.post(
+                    ollama_url,
+                    json=payload,
+                    timeout=120  # Vision modellekre hosszabb timeout
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    vision_response = data.get("message", {}).get("content", "")
+                    
+                    if vision_response:
+                        return {
+                            "response": vision_response,
+                            "image_info": image_info,
+                            "model": model,
+                            "success": True
+                        }
+                    else:
+                        raise Exception("Ollama válasz üres")
+                else:
+                    # Ha a modell nincs telepítve, próbáljuk meg ellenőrizni
+                    if response.status_code == 404:
+                        error_msg = f"Vision model ({model}) nincs telepítve. Telepítsd: ollama pull {model}"
+                        logger.warning(error_msg)
+                        return {
+                            "response": f"{error_msg}\n\nKép információ: {image_info['format']}, {image_info['size'][0]}x{image_info['size'][1]} pixel",
+                            "image_info": image_info,
+                            "model": model,
+                            "success": False,
+                            "error": "model_not_found"
+                        }
+                    else:
+                        raise Exception(f"Ollama API error: {response.status_code} - {response.text}")
+                        
+            except requests.exceptions.RequestException as ollama_error:
+                logger.error(f"Ollama vision API error: {ollama_error}")
+                # Ha Ollama nem elérhető vagy a modell nincs, alapvető információt adunk vissza
+                return {
+                    "response": f"Ollama vision API nem elérhető vagy a {model} modell nincs telepítve.\n\nKép információ:\n- Formátum: {image_info['format']}\n- Méret: {image_info['size'][0]}x{image_info['size'][1]} pixel\n- Mód: {image_info['mode']}\n\nTelepítsd a vision modelt: ollama pull {model}",
+                    "image_info": image_info,
+                    "model": model,
+                    "success": False,
+                    "error": str(ollama_error)
+                }
+            
         except Exception as img_error:
+            logger.error(f"Image processing error: {img_error}")
             return {
                 "response": f"Kép feldolgozási hiba: {str(img_error)}",
-                "error": str(img_error)
+                "error": str(img_error),
+                "success": False
             }
     except Exception as e:
         logger.error(f"Vision analysis error: {e}")
