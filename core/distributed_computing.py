@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import uuid
 import requests
+import aiohttp
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
@@ -163,12 +164,13 @@ class DistributedComputingNetwork:
         if not use_all_nodes:
             available_nodes = available_nodes[:1]
         
-        logger.info(f"Distributing task {task_id} to {len(available_nodes)} nodes")
+        logger.info(f"Distributing task {task_id} to {len(available_nodes)} nodes: {[n.node_id for n in available_nodes]}")
         
-        # Párhuzamos kérések minden csomópontra
+        # Párhuzamos kérések minden csomópontra (beleértve a szerver node-ot is)
         futures = []
         for node in available_nodes:
             task.assigned_nodes.append(node.node_id)
+            logger.info(f"Creating async task for node: {node.node_id} ({node.name})")
             future = asyncio.create_task(
                 self._execute_on_node(node, model, messages)
             )
@@ -209,11 +211,13 @@ class DistributedComputingNetwork:
     
     async def _execute_on_node(self, node: ComputeNode, model: str,
                               messages: List[Dict[str, str]]) -> str:
-        """Feladat végrehajtása egy csomóponton"""
+        """Feladat végrehajtása egy csomóponton - ASZINKRON HTTP kérés"""
         start_time = datetime.now()
+        logger.info(f"🚀 Executing task on node: {node.node_id} ({node.name}) at {node.ollama_url}")
         
         try:
-            # Ollama API hívás
+            # Ollama API hívás - MINDEN node-nak HTTP kérést küldünk, még a szerver node-nak is
+            # ASZINKRON kérés használata - ez biztosítja, hogy párhuzamosan fut és valóban használja az erőforrásokat
             url = f"{node.ollama_url}/api/chat"
             payload = {
                 "model": model,
@@ -225,23 +229,27 @@ class DistributedComputingNetwork:
             if node.api_key:
                 headers["X-API-Key"] = node.api_key
             
-            response = requests.post(url, json=payload, headers=headers, timeout=300)
-            
-            if response.status_code == 200:
-                data = response.json()
-                result = data.get("message", {}).get("content", "") or data.get("response", "")
-                
-                # Válaszidő mérése
-                response_time = (datetime.now() - start_time).total_seconds() * 1000
-                self.update_node_status(node.node_id, NodeStatus.ONLINE, 
-                                       response_time=response_time)
-                
-                return result
-            else:
-                raise Exception(f"Ollama API error: {response.status_code}")
+            # Aszinkron HTTP kérés - ez biztosítja a valódi párhuzamos futtatást
+            async with aiohttp.ClientSession() as session:
+                logger.debug(f"📡 Sending async HTTP request to {url} for node {node.node_id}")
+                async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        result = data.get("message", {}).get("content", "") or data.get("response", "")
+                        
+                        # Válaszidő mérése
+                        response_time = (datetime.now() - start_time).total_seconds() * 1000
+                        logger.info(f"✅ Node {node.node_id} completed in {response_time:.2f}ms, response length: {len(result)} chars")
+                        self.update_node_status(node.node_id, NodeStatus.ONLINE, 
+                                               response_time=response_time)
+                        
+                        return result
+                    else:
+                        error_text = await response.text()
+                        raise Exception(f"Ollama API error: {response.status} - {error_text}")
         
         except Exception as e:
-            logger.error(f"Node {node.node_id} error: {e}")
+            logger.error(f"❌ Node {node.node_id} error: {e}")
             self.update_node_status(node.node_id, NodeStatus.ERROR)
             raise
     

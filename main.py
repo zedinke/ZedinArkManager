@@ -299,6 +299,11 @@ A kódot mindig ``` nyelv formátumban add vissza."""
         available_nodes = distributed_network.get_available_nodes(model=request.model)
         use_distributed_computing = use_distributed and len(available_nodes) > 0
         
+        # Logolás: mely csomópontok lesznek használva
+        if use_distributed_computing:
+            node_info = [f"{n.node_id} ({n.name})" for n in available_nodes]
+            logger.info(f"Distributed computing enabled: {len(available_nodes)} nodes available: {node_info}")
+        
         if use_distributed_computing:
             try:
                 # Distributed hálózat használata - minden elérhető csomóponton párhuzamosan
