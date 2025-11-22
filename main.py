@@ -470,12 +470,19 @@ RUN_COMMAND: python test.py"""
         # Ha van workspace_path, akkor a fájlokat a kliens oldalon kell létrehozni
         # Mert a szerver nem fér hozzá a Windows path-hoz
         if request.workspace_path and execution_result.get("actions_executed"):
+            logger.info(f"Workspace path megadva, fájlok kliens oldali létrehozása: {len(execution_result.get('actions_executed', []))} akció")
             for action in execution_result.get("actions_executed", []):
-                if action.get("type") in ["CREATE_FILE", "intelligent_file_creation", "file_creation"]:
+                action_type = action.get("type")
+                logger.info(f"Akció típus: {action_type}, action: {action}")
+                if action_type in ["CREATE_FILE", "intelligent_file_creation", "file_creation"]:
                     file_name = action.get("file_created") or action.get("file_path")
                     if file_name:
-                        # Keresünk a fájl tartalmát az AI válaszban
-                        file_content = _extract_file_content_from_response(response, file_name, action)
+                        # Keresünk a fájl tartalmát az action-ben vagy az AI válaszban
+                        file_content = action.get("content", "")  # Először az action-ből
+                        if not file_content:
+                            file_content = _extract_file_content_from_response(response, file_name, action)
+                        
+                        logger.info(f"Fájl létrehozás: {file_name}, tartalom hossza: {len(file_content)}")
                         result["execution_result"]["files_to_create"].append({
                             "file_path": file_name,
                             "content": file_content,
