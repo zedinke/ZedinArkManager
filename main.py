@@ -333,12 +333,12 @@ A kódot mindig ``` nyelv formátumban add vissza."""
                         temperature=request.temperature
                     )
                     response_cache.set(last_msg, response, request.model, request.temperature)
-        else:
-            response = llm_service.chat(
-                messages=messages,
-                model=request.model,
-                temperature=request.temperature
-            )
+            else:
+                response = llm_service.chat(
+                    messages=messages,
+                    model=request.model,
+                    temperature=request.temperature
+                )
         
         last_user_message = messages[-1]["content"] if messages and messages[-1].get("role") == "user" else ""
         
