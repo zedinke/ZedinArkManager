@@ -99,7 +99,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                     
                     let ip: string;
                     if (serviceUrl.includes('ipify.org')) {
-                        const data = await response.json();
+                        const data = await response.json() as { ip: string };
                         ip = data.ip;
                     } else {
                         ip = (await response.text()).trim();
