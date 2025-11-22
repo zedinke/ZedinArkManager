@@ -105,6 +105,11 @@
           "default": true,
           "description": "Hibrid mód: egyszerre használja a lokális GPU-t ÉS a távoli szervert. Intelligens load balancing: ha a modell lokálisan elérhető, akkor a saját GPU-dat használja (70%), különben a távoli szervert (30%)."
         },
+        "zedinark.useParallelMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Párhuzamos mód: minden kérésnél EGYSZERRE használja mindkét erőforrást (lokális GPU + távoli szerver). A válaszokat kombinálja vagy a legjobbat választja. Figyelem: ez dupla erőforrás felhasználást jelent!"
+        },
         "zedinark.localOllamaUrl": {
           "type": "string",
           "default": "http://localhost:11434",

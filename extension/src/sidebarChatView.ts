@@ -22,6 +22,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
     private localOllama?: LocalOllamaAPI;
     private useLocalOllama: boolean = false;
     private useHybridMode: boolean = false; // Mindkét erőforrást használja
+    private useParallelMode: boolean = false; // Párhuzamos erőforrás használat
     private currentModel: string = 'default';
     private availableModels: string[] = [];
     private localModels: string[] = [];
@@ -42,9 +43,11 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
         const config = vscode.workspace.getConfiguration('zedinark');
         const useLocal = config.get<boolean>('useLocalOllama', false);
         const useHybrid = config.get<boolean>('useHybridMode', true); // Alapértelmezetten hibrid mód
+        const useParallel = config.get<boolean>('useParallelMode', false); // Párhuzamos mód
         const localOllamaUrl = config.get<string>('localOllamaUrl', 'http://localhost:11434');
         
         this.useHybridMode = useHybrid;
+        this.useParallelMode = useParallel;
         
         // Mindig inicializáljuk a lokális Ollama-t, ha elérhető
         this.localOllama = new LocalOllamaAPI(localOllamaUrl);
@@ -58,8 +61,10 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             this.useLocalOllama = false;
         }
         
-        if (this.useHybridMode && this.useLocalOllama) {
-            console.log('Hybrid mode enabled: using both local GPU and remote server');
+        if (this.useParallelMode && this.useLocalOllama) {
+            console.log('Parallel mode enabled: using both resources simultaneously for each request');
+        } else if (this.useHybridMode && this.useLocalOllama) {
+            console.log('Hybrid mode enabled: load balancing between local GPU and remote server');
         }
     }
 
@@ -208,25 +213,32 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             // Hozzáadjuk a felhasználó üzenetét a történethez
             this.conversationHistory.push({ role: 'user', content: text });
 
-            // Intelligens erőforrás választás
+            // Párhuzamos vagy intelligens erőforrás választás
             let response: string;
-            const useLocal = this.shouldUseLocal(selectedModel);
             
-            if (useLocal && this.useLocalOllama && this.localOllama) {
-                // Lokális Ollama használata (saját GPU)
-                try {
-                    response = await this.localOllama.chatWithHistory(this.conversationHistory, selectedModel);
-                    console.log('Response from local GPU');
-                } catch (localError: any) {
-                    // Ha lokális hiba, fallback távoli szerverre
-                    console.warn('Local Ollama failed, falling back to remote:', localError.message);
-                    response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
-                    console.log('Response from remote server (fallback)');
-                }
+            if (this.useParallelMode && this.useLocalOllama && this.localOllama && this.localModels.includes(selectedModel)) {
+                // Párhuzamos mód: mindkét erőforrást egyszerre használja
+                response = await this.handleParallelRequest(selectedModel);
             } else {
-                // Távoli API használata
-                response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
-                console.log('Response from remote server');
+                // Intelligens erőforrás választás (load balancing)
+                const useLocal = this.shouldUseLocal(selectedModel);
+                
+                if (useLocal && this.useLocalOllama && this.localOllama) {
+                    // Lokális Ollama használata (saját GPU)
+                    try {
+                        response = await this.localOllama.chatWithHistory(this.conversationHistory, selectedModel);
+                        console.log('Response from local GPU');
+                    } catch (localError: any) {
+                        // Ha lokális hiba, fallback távoli szerverre
+                        console.warn('Local Ollama failed, falling back to remote:', localError.message);
+                        response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
+                        console.log('Response from remote server (fallback)');
+                    }
+                } else {
+                    // Távoli API használata
+                    response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
+                    console.log('Response from remote server');
+                }
             }
 
             // Hozzáadjuk az AI válaszát a történethez
@@ -251,6 +263,123 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 loading: false
             });
         }
+    }
+
+    /**
+     * Párhuzamos kérés kezelése: mindkét erőforrást egyszerre használja
+     * Visszaadja a kombinált vagy a legjobb választ
+     */
+    private async handleParallelRequest(model: string): Promise<string> {
+        console.log('Parallel mode: sending request to both resources simultaneously');
+        
+        // Párhuzamos kérések indítása
+        const [localResponse, remoteResponse] = await Promise.allSettled([
+            this.localOllama!.chatWithHistory(this.conversationHistory, model),
+            this.api.chatWithHistory(this.conversationHistory, model)
+        ]);
+        
+        const localSuccess = localResponse.status === 'fulfilled';
+        const remoteSuccess = remoteResponse.status === 'fulfilled';
+        
+        const localResult: string | null = localSuccess ? (localResponse.value as string) : null;
+        const remoteResult: string | null = remoteSuccess ? (remoteResponse.value as string) : null;
+        
+        // Válasz kombinálása vagy választása
+        if (localSuccess && remoteSuccess && localResult && remoteResult) {
+            // Mindkét válasz sikeres - kombináljuk
+            console.log('Both responses received, combining results');
+            
+            // Válasz hossz alapján döntés (hosszabb válasz = részletesebb)
+            if (localResult.length > remoteResult.length * 1.2) {
+                // Lokális válasz jelentősen hosszabb
+                if (this._view) {
+                    this._view.webview.postMessage({
+                        command: 'feedback',
+                        type: 'info',
+                        content: 'Párhuzamos válasz: lokális GPU válasza használva (részletesebb)'
+                    });
+                }
+                return localResult;
+            } else if (remoteResult.length > localResult.length * 1.2) {
+                // Távoli válasz jelentősen hosszabb
+                if (this._view) {
+                    this._view.webview.postMessage({
+                        command: 'feedback',
+                        type: 'info',
+                        content: 'Párhuzamos válasz: távoli szerver válasza használva (részletesebb)'
+                    });
+                }
+                return remoteResult;
+            } else {
+                // Hasonló hosszúság - kombináljuk
+                const combined = this.combineResponses(localResult, remoteResult);
+                if (this._view) {
+                    this._view.webview.postMessage({
+                        command: 'feedback',
+                        type: 'success',
+                        content: 'Párhuzamos válasz: mindkét erőforrás válasza kombinálva'
+                    });
+                }
+                return combined;
+            }
+        } else if (localSuccess && localResult) {
+            // Csak lokális válasz sikeres
+            console.log('Only local response received');
+            if (this._view) {
+                this._view.webview.postMessage({
+                    command: 'feedback',
+                    type: 'warning',
+                    content: 'Párhuzamos válasz: csak lokális GPU válasza érkezett'
+                });
+            }
+            return localResult;
+        } else if (remoteSuccess && remoteResult) {
+            // Csak távoli válasz sikeres
+            console.log('Only remote response received');
+            if (this._view) {
+                this._view.webview.postMessage({
+                    command: 'feedback',
+                    type: 'warning',
+                    content: 'Párhuzamos válasz: csak távoli szerver válasza érkezett'
+                });
+            }
+            return remoteResult;
+        } else {
+            // Mindkét válasz sikertelen
+            const localError = localResponse.status === 'rejected' ? String(localResponse.reason) : 'Unknown error';
+            const remoteError = remoteResponse.status === 'rejected' ? String(remoteResponse.reason) : 'Unknown error';
+            throw new Error(`Both requests failed. Local: ${localError}, Remote: ${remoteError}`);
+        }
+    }
+
+    /**
+     * Két válasz kombinálása intelligensen
+     */
+    private combineResponses(localResponse: string, remoteResponse: string): string {
+        // Ha a válaszok megegyeznek, csak egyet adunk vissza
+        if (localResponse.trim() === remoteResponse.trim()) {
+            return localResponse;
+        }
+        
+        // Ha a válaszok eltérnek, kombináljuk
+        // Először a lokális válasz (általában részletesebb GPU-val)
+        // Aztán a távoli válasz kiegészítései
+        
+        // Egyszerű kombinálás: lokális válasz + távoli kiegészítések
+        let combined = localResponse;
+        
+        // Ha a távoli válasz tartalmaz új információkat
+        const localWords = new Set(localResponse.toLowerCase().split(/\s+/));
+        const remoteWords = remoteResponse.toLowerCase().split(/\s+/);
+        const newWords = remoteWords.filter(word => word.length > 3 && !localWords.has(word));
+        
+        if (newWords.length > 5) {
+            // Van jelentős új információ a távoli válaszban
+            combined += '\n\n--- További információ a távoli szerverről ---\n\n';
+            combined += remoteResponse;
+        }
+        
+        return combined;
     }
 
     /**
