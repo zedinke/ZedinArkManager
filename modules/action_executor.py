@@ -118,8 +118,8 @@ class ActionExecutor:
             file_path = create_match.group(1).strip()
             # Keresünk kód blokkot a CREATE_FILE után
             remaining_text = text[create_match.end():]
-            # Keresünk a következő ``` mintát
-            code_block_match = re.search(r"```(\w+)?\s*\n(.*?)```", remaining_text, re.DOTALL)
+            # Keresünk a következő ``` mintát (rugalmas whitespace kezeléssel)
+            code_block_match = re.search(r"```(\w+)?\s*(.*?)```", remaining_text, re.DOTALL)
             
             if code_block_match:
                 language = code_block_match.group(1).strip() if code_block_match.group(1) else "text"
