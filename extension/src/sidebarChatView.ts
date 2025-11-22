@@ -622,7 +622,10 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             return text;
         }
 
+        let initialized = false;
+
         function initialize() {
+            console.log('🔧 Initializing...');
             messagesDiv = document.getElementById('messages');
             messageInput = document.getElementById('messageInput');
             sendButton = document.getElementById('sendButton');
@@ -630,55 +633,112 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             clearBtn = document.getElementById('clearBtn');
             refreshBtn = document.getElementById('refreshBtn');
 
-            if (!messagesDiv || !messageInput || !sendButton || !modelSelect) {
+            console.log('📦 Elements:', {
+                messagesDiv: !!messagesDiv,
+                messageInput: !!messageInput,
+                sendButton: !!sendButton,
+                modelSelect: !!modelSelect,
+                clearBtn: !!clearBtn,
+                refreshBtn: !!refreshBtn
+            });
+
+            if (!messagesDiv || !messageInput || !sendButton || !modelSelect || !clearBtn || !refreshBtn) {
+                console.warn('⚠️ Some elements not found, retrying...');
                 setTimeout(initialize, 100);
                 return;
             }
 
+            if (initialized) {
+                console.log('⚠️ Already initialized');
+                return;
+            }
+
+            // Remove old listeners by cloning elements
+            const newSendButton = sendButton.cloneNode(true);
+            sendButton.parentNode.replaceChild(newSendButton, sendButton);
+            sendButton = newSendButton;
+
+            const newMessageInput = messageInput.cloneNode(true);
+            messageInput.parentNode.replaceChild(newMessageInput, messageInput);
+            messageInput = newMessageInput;
+
             // Event listeners
-            sendButton.addEventListener('click', sendMessage);
+            sendButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🖱️ Send button clicked');
+                sendMessage();
+            });
+
             messageInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
+                    e.stopPropagation();
+                    console.log('⌨️ Enter pressed');
                     sendMessage();
                 }
             });
+
             messageInput.addEventListener('input', () => {
                 messageInput.style.height = '44px';
                 messageInput.style.height = Math.min(messageInput.scrollHeight, 200) + 'px';
             });
+
             modelSelect.addEventListener('change', (e) => {
                 currentModel = e.target.value;
+                console.log('🔄 Model changed to:', currentModel);
                 vscode.postMessage({ command: 'switchModel', model: currentModel });
             });
-            clearBtn.addEventListener('click', () => {
+
+            clearBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🗑️ Clear button clicked');
                 if (confirm('Biztosan törölni szeretnéd a chat történetet?')) {
                     vscode.postMessage({ command: 'clearChat' });
                 }
             });
-            refreshBtn.addEventListener('click', () => {
+
+            refreshBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔄 Refresh button clicked');
                 vscode.postMessage({ command: 'loadModels' });
             });
+
+            initialized = true;
+            console.log('✅ Initialization complete');
 
             // Request models
             vscode.postMessage({ command: 'loadModels' });
         }
 
         function sendMessage() {
-            if (!messageInput || !sendButton) return;
+            console.log('📤 sendMessage called');
+            if (!messageInput || !sendButton) {
+                console.error('❌ Elements not available:', { messageInput: !!messageInput, sendButton: !!sendButton });
+                return;
+            }
+            
             const text = messageInput.value.trim();
-            if (!text) return;
+            if (!text) {
+                console.log('⚠️ Empty message');
+                return;
+            }
 
+            console.log('📝 Sending message:', text.substring(0, 50));
             addMessage('user', text);
             messageInput.value = '';
             messageInput.style.height = '44px';
             sendButton.disabled = true;
 
+            console.log('📨 Posting to vscode:', { command: 'sendMessage', text: text.substring(0, 50), model: currentModel });
             vscode.postMessage({
                 command: 'sendMessage',
                 text: text,
                 model: currentModel
             });
+            console.log('✅ Message posted');
         }
 
         function addMessage(role, content) {
