@@ -253,10 +253,13 @@ class DistributedComputingNetwork:
             task.status = "failed"
             raise Exception("No available compute nodes")
         
-        # Terheléselosztás: 50-50% (round-robin: felváltva választ)
-        if load_balance and len(available_nodes) >= 2:
+        # Párhuzamos mód: minden kérésnél MINDKÉT node-ot használjuk
+        if use_all_nodes and len(available_nodes) >= 2:
+            # Mindkét node-ot használjuk párhuzamosan
+            logger.info(f"🚀 Parallel mode: Using ALL {len(available_nodes)} nodes simultaneously: {[n.node_id for n in available_nodes]}")
+        elif load_balance and len(available_nodes) >= 2:
             # Round-robin: felváltva választunk (50-50% garantált)
-            # Ez jobb, mint a véletlenszerű, mert garantálja a 50-50% elosztást
+            # Ez csak akkor használatos, ha use_all_nodes=False
             selected_index = self._load_balance_index % len(available_nodes)
             selected_node = available_nodes[selected_index]
             self._load_balance_index += 1

@@ -357,8 +357,8 @@ A kódot mindig ``` nyelv formátumban add vissza."""
                     user_id=user_id,
                     model=request.model or DEFAULT_MODEL,
                     messages=messages,
-                    use_all_nodes=False,  # Ne használja mindkét node-ot egyszerre
-                    load_balance=True  # 50-50% terheléselosztás (véletlenszerűen választ egy node-ot)
+                    use_all_nodes=True,  # Minden kérésnél MINDKÉT node-ot használja párhuzamosan
+                    load_balance=False  # Nincs load balancing, mert mindkét node-ot használjuk
                 )
                 logger.info(f"✅ Distributed computing completed: {len(available_nodes)} nodes used")
             except Exception as e:
