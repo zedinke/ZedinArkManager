@@ -22,6 +22,7 @@ from core.gpu_manager import gpu_manager
 from core.distributed_computing import distributed_network, ComputeNode, NodeStatus
 from modules.code_generator import CodeGenerator
 from modules.project_context import ProjectContext
+from modules.action_executor import ActionExecutor
 
 # Logging beállítás
 log_dir = Path("logs")
@@ -65,6 +66,7 @@ llm_service = LLMService(
 file_manager = FileManager(base_path=BASE_PATH)
 project_manager = ProjectManager(base_path="projects")
 code_generator = CodeGenerator(llm_service, file_manager, project_manager)
+action_executor = ActionExecutor(file_manager=file_manager, base_path=BASE_PATH)
 project_context = ProjectContext(file_manager, base_path=BASE_PATH)
 conversation_memory = ConversationMemory(project_name="global", storage_dir="./data/memory")
 response_cache = ResponseCache(cache_dir="./data/cache", ttl=1800)
@@ -324,14 +326,34 @@ async def chat(request: ChatRequest, api_key: Optional[str] = Security(verify_ap
         
         has_system = any(msg.get("role") == "system" for msg in messages)
         if not has_system:
-            last_user_msg = messages[-1]["content"].lower() if messages else ""
-            code_keywords = ["hoz", "készíts", "create", "generate", "make", "írd", "write"]
-            
-            if any(keyword in last_user_msg for keyword in code_keywords):
-                system_prompt = """Te egy professzionális programozó vagy. 
-Amikor kódot vagy fájlt kérnek tőled, MINDIG generáld a teljes, működő kódot kód blokkban (```), ne csak írd le hogyan kell.
-A kódot mindig ``` nyelv formátumban add vissza."""
-                messages.insert(0, {"role": "system", "content": system_prompt})
+            # Teljes jogosultságú végrehajtó mód - ne írjon kódot, csak hajtsa végre
+            system_prompt = """Te egy teljes jogosultságú AI asszisztens vagy, aki közvetlenül végrehajtja az utasításokat.
+
+FONTOS SZABÁLYOK:
+1. SOHA ne írj kódot a válaszodba, csak hajtsd végre az utasításokat!
+2. Amikor kódot vagy fájlt kérnek, használd az alábbi formátumokat:
+   - CREATE_FILE: fájlnév
+   ```nyelv
+   kód tartalom
+   ```
+   - MODIFY_FILE: fájlnév
+   ```nyelv
+   teljes új tartalom
+   ```
+   - DELETE_FILE: fájlnév
+   - RUN_COMMAND: shell parancs
+
+3. A válaszodban csak a végrehajtás eredményét írd le, ne a kódot!
+4. Teljes jogosultságod van: fájlok létrehozása, módosítása, törlése, shell parancsok futtatása.
+5. Minden utasítást azonnal hajts végre, ne csak írd le hogyan kellene.
+
+Példa:
+Felhasználó: "Hozz létre egy test.py fájlt print('Hello') tartalommal"
+Te: "Létrehoztam a test.py fájlt." (és végrehajtod: CREATE_FILE: test.py ```python\nprint('Hello')\n```)
+
+Felhasználó: "Futtasd le a test.py fájlt"
+Te: "Futtattam a test.py fájlt. Eredmény: Hello" (és végrehajtod: RUN_COMMAND: python test.py)"""
+            messages.insert(0, {"role": "system", "content": system_prompt})
         
         # Distributed computing KIKAPCSOLVA - csak szerver erőforrásokat használjuk
         # CPU optimalizált mód: közvetlenül a lokális LLM service-t használjuk
@@ -360,22 +382,46 @@ A kódot mindig ``` nyelv formátumban add vissza."""
         
         last_user_message = messages[-1]["content"] if messages and messages[-1].get("role") == "user" else ""
         
-        save_result = code_generator.extract_and_save_code_from_chat(
-            chat_response=response,
-            auto_save=request.auto_save_code,
+        # Végrehajtás teljes jogosultságokkal - ne írjon kódot, csak hajtsa végre
+        execution_result = action_executor.execute_actions_from_response(
+            ai_response=response,
             user_message=last_user_message
         )
         
-        result = {
-            "response": response,
-            "model": request.model or DEFAULT_MODEL
-        }
+        # Válasz szövegének használata (kód blokkok nélkül)
+        clean_response = execution_result.get("response_text", response)
         
-        if save_result.get("files_saved"):
-            result["files_saved"] = save_result["files_saved"]
-            result["code_detected"] = True
-        else:
-            result["code_detected"] = save_result.get("code_found", False)
+        # Ha nincs tiszta válasz, de van végrehajtás, összeállítjuk az eredményt
+        if not clean_response.strip() and execution_result.get("actions_executed"):
+            action_summaries = []
+            if execution_result.get("files_created"):
+                action_summaries.append(f"Létrehozott fájlok: {', '.join(execution_result['files_created'])}")
+            if execution_result.get("files_modified"):
+                action_summaries.append(f"Módosított fájlok: {', '.join(execution_result['files_modified'])}")
+            if execution_result.get("files_deleted"):
+                action_summaries.append(f"Törölt fájlok: {', '.join(execution_result['files_deleted'])}")
+            if execution_result.get("commands_run"):
+                for cmd_result in execution_result["commands_run"]:
+                    if isinstance(cmd_result, dict) and cmd_result.get("success"):
+                        action_summaries.append(f"Parancs végrehajtva: {cmd_result.get('command', 'N/A')}")
+            
+            if action_summaries:
+                clean_response = "\n".join(action_summaries)
+            else:
+                clean_response = "Végrehajtva."
+        
+        result = {
+            "response": clean_response,
+            "model": request.model or DEFAULT_MODEL,
+            "execution_result": {
+                "actions_executed": len(execution_result.get("actions_executed", [])),
+                "files_created": execution_result.get("files_created", []),
+                "files_modified": execution_result.get("files_modified", []),
+                "files_deleted": execution_result.get("files_deleted", []),
+                "commands_run": len(execution_result.get("commands_run", [])),
+                "errors": execution_result.get("errors", [])
+            }
+        }
         
         return result
     except Exception as e:
