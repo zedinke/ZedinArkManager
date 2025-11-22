@@ -49,7 +49,9 @@ class ActionExecutor:
         }
         
         # 0. Intelligens fájl létrehozás a felhasználó üzenetéből (ha az AI nem használta a formátumot)
-        if user_message:
+        # Csak akkor, ha nincs explicit CREATE_FILE parancs
+        has_explicit_create = bool(re.search(r"CREATE_FILE:", ai_response, re.IGNORECASE))
+        if user_message and not has_explicit_create:
             file_creation_result = self._try_intelligent_file_creation(user_message, ai_response)
             if file_creation_result:
                 results["actions_executed"].append(file_creation_result)
