@@ -67,9 +67,17 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
     private async loadModels() {
         try {
             this.availableModels = await this.api.listModels();
-            if (this.availableModels.length > 0 && this.currentModel === 'default') {
-                this.currentModel = this.availableModels[0];
+            
+            // Ha van modell és még nincs kiválasztva, vagy 'default' a jelenlegi
+            if (this.availableModels.length > 0) {
+                if (this.currentModel === 'default' || !this.availableModels.includes(this.currentModel)) {
+                    this.currentModel = this.availableModels[0];
+                }
+            } else {
+                // Ha nincs modell, töröljük a 'default' értéket
+                this.currentModel = '';
             }
+            
             if (this._view) {
                 this._view.webview.postMessage({
                     command: 'modelsLoaded',
@@ -79,10 +87,17 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             }
         } catch (error: any) {
             console.error('Failed to load models:', error);
+            this.availableModels = [];
+            this.currentModel = '';
             if (this._view) {
                 this._view.webview.postMessage({
                     command: 'error',
-                    error: 'Nem sikerült betölteni a modelleket'
+                    error: 'Nem sikerült betölteni a modelleket: ' + error.message
+                });
+                this._view.webview.postMessage({
+                    command: 'modelsLoaded',
+                    models: [],
+                    currentModel: ''
                 });
             }
         }
@@ -100,7 +115,26 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
     private async handleMessage(text: string, model?: string) {
         if (!this._view) return;
 
+        // Ellenőrizzük, hogy van-e érvényes modell
         const selectedModel = model || this.currentModel;
+        
+        // Ha nincs modell vagy 'default' a modell és nincs elérhető modell
+        if (!selectedModel || selectedModel === 'default' || this.availableModels.length === 0) {
+            this._view.webview.postMessage({
+                command: 'error',
+                error: 'Nincs modell kiválasztva. Kérlek válassz egy modellt a legördülő menüből, vagy várj a modellek betöltésére.'
+            });
+            return;
+        }
+
+        // Ellenőrizzük, hogy a kiválasztott modell létezik-e
+        if (!this.availableModels.includes(selectedModel)) {
+            this._view.webview.postMessage({
+                command: 'error',
+                error: `A kiválasztott modell (${selectedModel}) nem elérhető. Kérlek válassz egy másik modellt.`
+            });
+            return;
+        }
 
         try {
             this._view.webview.postMessage({
@@ -111,7 +145,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             // Hozzáadjuk a felhasználó üzenetét a történethez
             this.conversationHistory.push({ role: 'user', content: text });
 
-            // API hívás történettel
+            // API hívás történettel - csak akkor küldjük a modellt, ha van
             const response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
 
             // Hozzáadjuk az AI válaszát a történethez
@@ -121,6 +155,11 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             this.parseAndDisplayResponse(response);
 
         } catch (error: any) {
+            // Ha hiba történt, távolítsuk el a felhasználó üzenetét a történetből
+            if (this.conversationHistory.length > 0 && this.conversationHistory[this.conversationHistory.length - 1].role === 'user') {
+                this.conversationHistory.pop();
+            }
+            
             this._view.webview.postMessage({
                 command: 'error',
                 error: error.message
@@ -630,6 +669,12 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 const text = input.value.trim();
                 if (!text || sendBtn.disabled) return;
                 
+                // Ellenőrizzük, hogy van-e modell kiválasztva
+                if (!currentModel || currentModel === '') {
+                    addFeedback('Kérlek válassz egy modellt a legördülő menüből, mielőtt üzenetet küldenél.', 'warning');
+                    return;
+                }
+                
                 addMessage('user', text);
                 input.value = '';
                 sendBtn.disabled = true;
@@ -763,15 +808,21 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                             }
                             modelSelect.appendChild(option);
                         });
+                        if (!currentModel && msg.models.length > 0) {
+                            currentModel = msg.models[0].id;
+                            modelSelect.value = currentModel;
+                        }
                     } else {
                         const option = document.createElement('option');
                         option.value = '';
                         option.textContent = 'Nincs elérhető modell';
                         modelSelect.appendChild(option);
+                        currentModel = '';
+                        addFeedback('Nincs elérhető modell. Kérlek ellenőrizd az API kapcsolatot.', 'warning');
                     }
                 } else if (msg.command === 'modelChanged') {
-                    currentModel = msg.model;
-                    modelSelect.value = msg.model;
+                    currentModel = msg.model || '';
+                    modelSelect.value = msg.model || '';
                 } else if (msg.command === 'chatCleared') {
                     messages.innerHTML = '';
                 } else if (msg.command === 'thinking') {
