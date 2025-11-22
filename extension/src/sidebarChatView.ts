@@ -501,14 +501,22 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 ? workspaceFolders[0].uri.fsPath 
                 : undefined;
             
-            response = await this.api.chatWithHistory(this.conversationHistory, selectedModel, workspacePath);
+            const apiResponse = await this.api.chatWithHistory(this.conversationHistory, selectedModel, workspacePath);
             console.log('✅ Response from distributed computing (server + local GPU in parallel)');
 
+            // Fájl létrehozás kliens oldalon (ha van workspace)
+            if (workspacePath && apiResponse.execution_result?.files_to_create) {
+                await this.createFilesLocally(apiResponse.execution_result.files_to_create, workspacePath);
+            }
+
+            // Válasz szöveg
+            const responseText = apiResponse.response || (typeof apiResponse === 'string' ? apiResponse : '');
+
             // Hozzáadjuk az AI válaszát a történethez
-            this.conversationHistory.push({ role: 'assistant', content: response });
+            this.conversationHistory.push({ role: 'assistant', content: responseText });
 
             // Parsoljuk a választ és küldjük a különböző komponenseknek
-            this.parseAndDisplayResponse(response);
+            this.parseAndDisplayResponse(responseText);
 
         } catch (error: any) {
             // Ha hiba történt, távolítsuk el a felhasználó üzenetét a történetből
@@ -806,6 +814,40 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
         });
 
         return todos;
+    }
+
+    /**
+     * Fájlok létrehozása lokálisan a workspace-ben
+     */
+    private async createFilesLocally(files: Array<{file_path: string, content: string, language?: string}>, workspacePath: string): Promise<void> {
+        const workspaceUri = vscode.Uri.file(workspacePath);
+        
+        for (const file of files) {
+            try {
+                const fileUri = vscode.Uri.joinPath(workspaceUri, file.file_path);
+                
+                // Könyvtár létrehozása, ha szükséges
+                const pathParts = file.file_path.split(/[/\\]/);
+                if (pathParts.length > 1) {
+                    const dirPath = pathParts.slice(0, -1).join('/');
+                    const dirUri = vscode.Uri.joinPath(workspaceUri, dirPath);
+                    try {
+                        await vscode.workspace.fs.createDirectory(dirUri);
+                    } catch (e) {
+                        // Könyvtár már létezik vagy más hiba - nem probléma
+                    }
+                }
+                
+                // Fájl létrehozása
+                const encoder = new TextEncoder();
+                const fileData = encoder.encode(file.content);
+                await vscode.workspace.fs.writeFile(fileUri, fileData);
+                
+                console.log(`✅ Fájl létrehozva: ${file.file_path} a workspace-ben (${workspacePath})`);
+            } catch (error: any) {
+                console.error(`❌ Hiba a fájl létrehozásakor (${file.file_path}):`, error);
+            }
+        }
     }
 
     private _getHtmlForWebview(webview: vscode.Webview): string {

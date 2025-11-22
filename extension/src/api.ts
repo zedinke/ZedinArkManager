@@ -139,7 +139,7 @@ export class ZedinArkAPI {
         }
     }
 
-    async chatWithHistory(messages: Array<{role: string, content: string}>, model?: string, workspacePath?: string): Promise<string> {
+    async chatWithHistory(messages: Array<{role: string, content: string}>, model?: string, workspacePath?: string): Promise<any> {
         try {
             const response = await this.client.post('/api/chat', {
                 messages: messages,
@@ -149,7 +149,8 @@ export class ZedinArkAPI {
                 timeout: 300000, // 5 perc timeout (nagy modellek esetén)
                 responseType: 'json'
             });
-            return response.data.response || '';
+            // Visszaadjuk a teljes response objektumot (nem csak a response szöveget)
+            return response.data;
         } catch (error: any) {
             if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
                 throw new Error(`Chat timeout: A válasz túl sokáig tart. Próbáld újra vagy válassz egy gyorsabb modellt.`);

@@ -324,11 +324,20 @@ async def chat(request: ChatRequest, api_key: Optional[str] = Security(verify_ap
         current_base_path = BASE_PATH
         if request.workspace_path:
             # A kliens workspace útvonalát használjuk
-            current_base_path = request.workspace_path
-            logger.info(f"Workspace útvonal használata: {current_base_path}")
-            # Dinamikus file_manager és action_executor létrehozása workspace útvonallal
-            workspace_file_manager = FileManager(base_path=current_base_path)
-            workspace_action_executor = ActionExecutor(file_manager=workspace_file_manager, base_path=current_base_path)
+            # Windows path konverzió Linux szerveren (ha szükséges)
+            workspace_path = request.workspace_path
+            # Ha Windows path (pl. E:\path), akkor Linux-on nem működik
+            # De mivel a szerver Linux-on fut, a kliens Windows-on, 
+            # a fájlokat a kliens gépen kell létrehozni, nem a szerveren!
+            # Ezért NFS/SMB mount vagy más megoldás kell, VAGY
+            # a fájlokat a kliens oldalon kell létrehozni az extension-ben
+            
+            # Jelenleg: logoljuk, de ne használjuk, mert a szerver nem fér hozzá a Windows path-hoz
+            logger.warning(f"Workspace útvonal érkezett: {workspace_path} (Windows path, szerver nem fér hozzá)")
+            logger.info(f"Alapértelmezett BASE_PATH használata: {BASE_PATH}")
+            current_base_path = BASE_PATH
+            workspace_file_manager = file_manager
+            workspace_action_executor = action_executor
         else:
             # Alapértelmezett file_manager és action_executor
             workspace_file_manager = file_manager
@@ -451,12 +460,47 @@ RUN_COMMAND: python test.py"""
                 "files_modified": execution_result.get("files_modified", []),
                 "files_deleted": execution_result.get("files_deleted", []),
                 "commands_run": len(execution_result.get("commands_run", [])),
-                "errors": execution_result.get("errors", [])
+                "errors": execution_result.get("errors", []),
+                # Fájl tartalmak a kliens oldali létrehozáshoz
+                "files_to_create": []
             }
         }
         
+        # Ha van workspace_path, akkor a fájlokat a kliens oldalon kell létrehozni
+        # Mert a szerver nem fér hozzá a Windows path-hoz
+        if request.workspace_path and execution_result.get("actions_executed"):
+            for action in execution_result.get("actions_executed", []):
+                if action.get("type") in ["CREATE_FILE", "intelligent_file_creation", "file_creation"]:
+                    file_name = action.get("file_created") or action.get("file_path")
+                    if file_name:
+                        # Keresünk a fájl tartalmát az AI válaszban
+                        file_content = _extract_file_content_from_response(response, file_name, action)
+                        result["execution_result"]["files_to_create"].append({
+                            "file_path": file_name,
+                            "content": file_content,
+                            "language": action.get("language", "text")
+                        })
+        
         return result
     except Exception as e:
+        logger.error(f"Chat error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _extract_file_content_from_response(ai_response: str, file_name: str, action: Dict) -> str:
+    """Fájl tartalom kinyerése az AI válaszból"""
+    # Ha van explicit content az action-ben
+    if action.get("content"):
+        return action.get("content")
+    
+    # Keresünk CREATE_FILE: file_name után kód blokkot
+    pattern = rf"CREATE_FILE:\s*{re.escape(file_name)}\s*\n```\w*\s*\n(.*?)```"
+    match = re.search(pattern, ai_response, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    
+    # Ha nincs, üres string
+    return ""
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
