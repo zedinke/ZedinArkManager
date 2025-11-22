@@ -198,7 +198,9 @@ class DistributedComputingNetwork:
             available.append(node)
         
         # Rendezés: kevésbé terhelt, gyorsabb válaszidő
-        available.sort(key=lambda n: (n.current_load, n.response_time))
+        # DE: Load balancing esetén ne rendezzünk, hogy a véletlenszerű választás működjön
+        # Csak akkor rendezzünk, ha nincs load balancing
+        # available.sort(key=lambda n: (n.current_load, n.response_time))
         return available
     
     async def distribute_task(self, user_id: str, model: str, 
@@ -238,11 +240,13 @@ class DistributedComputingNetwork:
         
         # Terheléselosztás: 50-50% (véletlenszerűen választ egy node-ot)
         if load_balance and len(available_nodes) >= 2:
-            import random
+            # Rendezés előtt véletlenszerűen választunk (hogy ne legyen előny a rendezés miatt)
+            # Shuffle-oljuk a listát, hogy a véletlenszerű választás igazán véletlenszerű legyen
+            random.shuffle(available_nodes)
             # Véletlenszerűen választunk egy node-ot (50% esély mindkettőre)
             selected_node = random.choice(available_nodes)
             available_nodes = [selected_node]
-            logger.info(f"⚖️ Load balancing: Selected node {selected_node.node_id} (50% chance for each node)")
+            logger.info(f"⚖️ Load balancing: Selected node {selected_node.node_id} ({selected_node.name}) from {len(available_nodes)} available nodes (50% chance for each)")
         elif not use_all_nodes:
             # Ha use_all_nodes=False, csak a legjobb csomópontot használjuk
             available_nodes = available_nodes[:1]
