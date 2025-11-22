@@ -15,23 +15,43 @@ if (-not $isAdmin) {
 
 # Jelenlegi OLLAMA_HOST ellenorzes
 Write-Host "1. Jelenlegi OLLAMA_HOST ellenorzes..." -ForegroundColor Yellow
-$currentHost = [System.Environment]::GetEnvironmentVariable("OLLAMA_HOST", "Machine")
-if ($currentHost) {
-    Write-Host "   Jelenlegi ertek: $currentHost" -ForegroundColor White
-} else {
-    Write-Host "   Nincs beallitva" -ForegroundColor Red
-}
+$currentHostMachine = [System.Environment]::GetEnvironmentVariable("OLLAMA_HOST", "Machine")
+$currentHostUser = [System.Environment]::GetEnvironmentVariable("OLLAMA_HOST", "User")
+$currentHostProcess = $env:OLLAMA_HOST
 
-# OLLAMA_HOST beallitasa
+Write-Host "   Machine (gep szintu): $currentHostMachine" -ForegroundColor White
+Write-Host "   User (felhasznalo szintu): $currentHostUser" -ForegroundColor White
+Write-Host "   Process (jelenlegi session): $currentHostProcess" -ForegroundColor White
+
+# OLLAMA_HOST beallitasa - MINDKET helyen (User es Machine)
 Write-Host ""
 Write-Host "2. OLLAMA_HOST beallitasa: 0.0.0.0:11434..." -ForegroundColor Yellow
+Write-Host "   (Beallitjuk User es Machine szinten is)" -ForegroundColor Cyan
 try {
+    # Eloszor toroljuk a regi ertekeket (ha vannak)
+    if ($currentHostMachine) {
+        [System.Environment]::SetEnvironmentVariable("OLLAMA_HOST", $null, "Machine")
+        Write-Host "   Regi Machine ertek torolve" -ForegroundColor Yellow
+    }
+    if ($currentHostUser) {
+        [System.Environment]::SetEnvironmentVariable("OLLAMA_HOST", $null, "User")
+        Write-Host "   Regi User ertek torolve" -ForegroundColor Yellow
+    }
+    
+    # Uj ertek beallitasa MINDKET helyen
     [System.Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0:11434", "Machine")
-    Write-Host "   OK: OLLAMA_HOST beallitva: 0.0.0.0:11434" -ForegroundColor Green
+    [System.Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0:11434", "User")
+    
+    # Jelenlegi session-ben is beallitjuk
+    $env:OLLAMA_HOST = "0.0.0.0:11434"
+    
+    Write-Host "   OK: OLLAMA_HOST beallitva: 0.0.0.0:11434 (Machine, User, Process)" -ForegroundColor Green
     
     # Ellenorzes
-    $newHost = [System.Environment]::GetEnvironmentVariable("OLLAMA_HOST", "Machine")
-    Write-Host "   Ellenorzes: $newHost" -ForegroundColor Green
+    $newHostMachine = [System.Environment]::GetEnvironmentVariable("OLLAMA_HOST", "Machine")
+    $newHostUser = [System.Environment]::GetEnvironmentVariable("OLLAMA_HOST", "User")
+    Write-Host "   Ellenorzes Machine: $newHostMachine" -ForegroundColor Green
+    Write-Host "   Ellenorzes User: $newHostUser" -ForegroundColor Green
 } catch {
     Write-Host "   ERROR: Hiba a kornyezeti valtozo beallitasakor: $_" -ForegroundColor Red
     exit 1
@@ -58,10 +78,15 @@ if ($ollamaProcesses) {
 # Ollama ujrainditasa
 Write-Host ""
 Write-Host "4. Ollama ujrainditasa..." -ForegroundColor Yellow
-Write-Host "   Futtasd ezt a parancsot egy uj PowerShell ablakban:" -ForegroundColor Cyan
-Write-Host "   ollama serve" -ForegroundColor White
+Write-Host "   FONTOS: Uj PowerShell ablakban futtasd, hogy a kornyezeti valtozo betoltodjon!" -ForegroundColor Red
 Write-Host ""
-Write-Host "   VAGY inditsd el az Ollama-t a szokasos modon" -ForegroundColor Cyan
+Write-Host "   Legegyszerubb mod:" -ForegroundColor Cyan
+Write-Host "   1. Zarjuk be ezt a PowerShell ablakot" -ForegroundColor White
+Write-Host "   2. Nyiss egy UJ PowerShell ablakot (nem kell admin)" -ForegroundColor White
+Write-Host "   3. Futtasd: ollama serve" -ForegroundColor White
+Write-Host ""
+Write-Host "   VAGY futtasd ezt a parancsot itt (uj session):" -ForegroundColor Cyan
+Write-Host "   $env:OLLAMA_HOST='0.0.0.0:11434'; ollama serve" -ForegroundColor White
 
 # Ellenorzes: netstat
 Write-Host ""
