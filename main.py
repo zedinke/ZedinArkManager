@@ -335,9 +335,10 @@ A kódot mindig ``` nyelv formátumban add vissza."""
         # Distributed computing KIKAPCSOLVA - csak szerver erőforrásokat használjuk
         # CPU optimalizált mód: közvetlenül a lokális LLM service-t használjuk
         logger.debug("Using local LLM service (CPU optimized mode, distributed computing disabled)")
-            # Hagyományos lokális feldolgozás
-            cache_key = None
-            if request.use_cache and not has_system and len(messages) == 1:
+        
+        # Hagyományos lokális feldolgozás
+        cache_key = None
+        if request.use_cache and not has_system and len(messages) == 1:
                 last_msg = messages[-1]["content"] if messages else ""
                 cached_response = response_cache.get(last_msg, request.model, request.temperature)
                 if cached_response:
