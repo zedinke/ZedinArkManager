@@ -19,6 +19,7 @@ from core.project_manager import ProjectManager
 from core.conversation_memory import ConversationMemory
 from core.auth import api_key_manager, verify_api_key
 from core.gpu_manager import gpu_manager
+from core.distributed_computing import distributed_network, ComputeNode, NodeStatus
 from modules.code_generator import CodeGenerator
 from modules.project_context import ProjectContext
 
@@ -67,6 +68,63 @@ code_generator = CodeGenerator(llm_service, file_manager, project_manager)
 project_context = ProjectContext(file_manager, base_path=BASE_PATH)
 conversation_memory = ConversationMemory(project_name="global", storage_dir="./data/memory")
 response_cache = ResponseCache(cache_dir="./data/cache", ttl=1800)
+
+# Szerver automatikus regisztrálása a distributed hálózatba
+def register_server_as_node():
+    """Szerver automatikus regisztrálása compute node-ként"""
+    try:
+        import socket
+        import multiprocessing
+        
+        # Szerver információk gyűjtése
+        gpu_count = gpu_manager.get_gpu_count()
+        gpu_info = gpu_manager.get_all_gpus_status() if gpu_count > 0 else []
+        total_gpu_memory = sum(gpu.get("memory_total", 0) for gpu in gpu_info) if gpu_info else 0
+        cpu_cores = multiprocessing.cpu_count()
+        
+        # Szerver modellek lekérése
+        try:
+            server_models = llm_service.list_models()
+        except:
+            server_models = []
+        
+        # Hostname vagy IP
+        hostname = socket.gethostname()
+        try:
+            host_ip = socket.gethostbyname(hostname)
+        except:
+            host_ip = "localhost"
+        
+        # Node regisztrálása
+        server_node = distributed_network.register_node(
+            node_id=f"server-{hostname}",
+            user_id="server",
+            name=f"Server - {hostname} ({host_ip})",
+            ollama_url=OLLAMA_URL,
+            api_key=None,
+            gpu_count=gpu_count,
+            gpu_memory=total_gpu_memory,
+            cpu_cores=cpu_cores
+        )
+        
+        # Modellek frissítése
+        if server_models:
+            distributed_network.update_node_status(
+                node_id=server_node.node_id,
+                status=NodeStatus.ONLINE,
+                available_models=server_models
+            )
+        
+        logger.info(f"Server registered as compute node: {server_node.node_id} "
+                   f"(GPU: {gpu_count}, CPU: {cpu_cores}, Models: {len(server_models)})")
+        
+        return server_node
+    except Exception as e:
+        logger.warning(f"Failed to register server as node: {e}")
+        return None
+
+# Szerver regisztrálása indításkor
+server_node = register_server_as_node()
 
 # FastAPI app
 app = FastAPI(
@@ -172,6 +230,20 @@ async def health_check():
     """Health check endpoint (autentikáció nélkül)"""
     ollama_connected = llm_service.check_connection()
     gpu_count = gpu_manager.get_gpu_count()
+    
+    # Szerver node állapot frissítése
+    if server_node:
+        try:
+            server_models = llm_service.list_models()
+            distributed_network.update_node_status(
+                node_id=server_node.node_id,
+                status=NodeStatus.ONLINE if ollama_connected else NodeStatus.OFFLINE,
+                available_models=server_models,
+                current_load=0.0  # TODO: valós terhelés mérése
+            )
+        except:
+            pass
+    
     return {
         "status": "healthy" if ollama_connected else "degraded",
         "ollama_connected": ollama_connected,
@@ -179,7 +251,12 @@ async def health_check():
         "default_model": DEFAULT_MODEL,
         "auth_enabled": os.getenv("ENABLE_AUTH", "false").lower() == "true",
         "gpu_count": gpu_count,
-        "gpu_layers": NUM_GPU_LAYERS
+        "gpu_layers": NUM_GPU_LAYERS,
+        "distributed_network": {
+            "server_registered": server_node is not None,
+            "total_nodes": len(distributed_network.nodes),
+            "online_nodes": len([n for n in distributed_network.nodes.values() if n.status == NodeStatus.ONLINE])
+        }
     }
 
 
@@ -218,19 +295,44 @@ Amikor kódot vagy fájlt kérnek tőled, MINDIG generáld a teljes, működő k
 A kódot mindig ``` nyelv formátumban add vissza."""
                 messages.insert(0, {"role": "system", "content": system_prompt})
         
-        cache_key = None
-        if request.use_cache and not has_system and len(messages) == 1:
-            last_msg = messages[-1]["content"] if messages else ""
-            cached_response = response_cache.get(last_msg, request.model, request.temperature)
-            if cached_response:
-                response = cached_response
-            else:
+        # Distributed computing használata, ha be van kapcsolva és van elérhető csomópont
+        available_nodes = distributed_network.get_available_nodes(model=request.model)
+        use_distributed_computing = use_distributed and len(available_nodes) > 0
+        
+        if use_distributed_computing:
+            try:
+                # Distributed hálózat használata - minden elérhető csomóponton párhuzamosan
+                user_id = api_key or "anonymous"
+                response = await distributed_network.distribute_task(
+                    user_id=user_id,
+                    model=request.model or DEFAULT_MODEL,
+                    messages=messages,
+                    use_all_nodes=True  # Minden elérhető csomópontot használ
+                )
+                logger.info(f"Distributed computing: {len(available_nodes)} nodes used")
+            except Exception as e:
+                logger.warning(f"Distributed computing failed, falling back to local: {e}")
+                # Fallback lokális LLM service-re
                 response = llm_service.chat(
                     messages=messages,
                     model=request.model,
                     temperature=request.temperature
                 )
-                response_cache.set(last_msg, response, request.model, request.temperature)
+        else:
+            # Hagyományos lokális feldolgozás
+            cache_key = None
+            if request.use_cache and not has_system and len(messages) == 1:
+                last_msg = messages[-1]["content"] if messages else ""
+                cached_response = response_cache.get(last_msg, request.model, request.temperature)
+                if cached_response:
+                    response = cached_response
+                else:
+                    response = llm_service.chat(
+                        messages=messages,
+                        model=request.model,
+                        temperature=request.temperature
+                    )
+                    response_cache.set(last_msg, response, request.model, request.temperature)
         else:
             response = llm_service.chat(
                 messages=messages,
