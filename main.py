@@ -501,8 +501,6 @@ def _extract_file_content_from_response(ai_response: str, file_name: str, action
     
     # Ha nincs, üres string
     return ""
-        logger.error(f"Chat error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/chat/stream")
