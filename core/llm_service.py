@@ -5,9 +5,12 @@ import requests
 import json
 import os
 import multiprocessing
+import logging
 from typing import List, Dict, Optional, AsyncGenerator
 import asyncio
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 
 class ModelType(str, Enum):

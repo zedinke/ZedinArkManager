@@ -332,43 +332,9 @@ Amikor kódot vagy fájlt kérnek tőled, MINDIG generáld a teljes, működő k
 A kódot mindig ``` nyelv formátumban add vissza."""
                 messages.insert(0, {"role": "system", "content": system_prompt})
         
-        # Distributed computing használata, ha be van kapcsolva és van elérhető csomópont
-        # Alapértelmezetten be van kapcsolva, ha van elérhető csomópont
-        # ignore_model_filter=True: minden modell használja az összes beregisztrált erőforrást
-        available_nodes = distributed_network.get_available_nodes(
-            model=request.model,
-            ignore_model_filter=True  # Minden csomópontot használ, függetlenül a modelltől
-        )
-        use_distributed_computing = len(available_nodes) > 0
-        
-        # Logolás: mely csomópontok lesznek használva
-        if use_distributed_computing:
-            node_info = [f"{n.node_id} ({n.name})" for n in available_nodes]
-            logger.info(f"Distributed computing enabled: {len(available_nodes)} nodes available: {node_info}")
-        
-        if use_distributed_computing:
-            try:
-                # Distributed hálózat használata - minden elérhető csomóponton párhuzamosan
-                # Ez BELEÉRTI a szerver node-ot is, így a szerver erőforrásai is használódnak
-                user_id = api_key or "anonymous"
-                logger.info(f"🚀 Using distributed computing with {len(available_nodes)} nodes: {[n.node_id for n in available_nodes]}")
-                response = await distributed_network.distribute_task(
-                    user_id=user_id,
-                    model=request.model or DEFAULT_MODEL,
-                    messages=messages,
-                    use_all_nodes=True,  # Minden kérésnél MINDKÉT node-ot használja párhuzamosan
-                    load_balance=False  # Nincs load balancing, mert mindkét node-ot használjuk
-                )
-                logger.info(f"✅ Distributed computing completed: {len(available_nodes)} nodes used")
-            except Exception as e:
-                logger.warning(f"Distributed computing failed, falling back to local: {e}")
-                # Fallback lokális LLM service-re
-                response = llm_service.chat(
-                    messages=messages,
-                    model=request.model,
-                    temperature=request.temperature
-                )
-        else:
+        # Distributed computing KIKAPCSOLVA - csak szerver erőforrásokat használjuk
+        # CPU optimalizált mód: közvetlenül a lokális LLM service-t használjuk
+        logger.debug("Using local LLM service (CPU optimized mode, distributed computing disabled)")
             # Hagyományos lokális feldolgozás
             cache_key = None
             if request.use_cache and not has_system and len(messages) == 1:
