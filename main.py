@@ -831,15 +831,32 @@ async def get_current_project(api_key: Optional[str] = Security(verify_api_key))
 @app.post("/api/distributed/register")
 async def register_compute_node(
     request: Dict[str, Any],
-    api_auth: Optional[str] = Security(verify_api_key)
+    api_auth: Optional[str] = Security(verify_api_key),
+    client_ip: Optional[str] = None
 ):
     """Compute node regisztrálása a distributed network-be"""
     try:
+        from fastapi import Request
+        
+        # Ha nincs client_ip paraméter, próbáljuk meg a request-ből
+        if not client_ip:
+            # A FastAPI Request objektumot használjuk, ha elérhető
+            pass
+        
+        ollama_url = request.get("ollama_url")
+        
+        # Ha localhost van, cseréljük le a kliens IP-jére
+        # A kliens IP-t a request header-ből kapjuk
+        if ollama_url and ("localhost" in ollama_url or "127.0.0.1" in ollama_url):
+            # A kliens IP-t a request-ből kellene kapni, de jelenleg nem elérhető
+            # Ezért a kliens oldalon kell detektálni az IP-t
+            logger.warning(f"⚠️ Node registered with localhost URL: {ollama_url}. Server cannot access this. Client should use its actual IP address.")
+        
         node = distributed_network.register_node(
             node_id=request.get("node_id"),
             user_id=request.get("user_id", "user"),
             name=request.get("name"),
-            ollama_url=request.get("ollama_url"),
+            ollama_url=ollama_url,
             api_key=request.get("api_key"),
             gpu_count=request.get("gpu_count", 0),
             gpu_memory=request.get("gpu_memory", 0),
@@ -849,20 +866,27 @@ async def register_compute_node(
         # Modellek lekérése (ha elérhető)
         try:
             import requests
-            ollama_url = request.get("ollama_url")
-            response = requests.get(f"{ollama_url}/api/tags", timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                models = [m["name"] for m in data.get("models", [])]
-                distributed_network.update_node_status(
-                    node_id=node.node_id,
-                    status=NodeStatus.ONLINE,
-                    available_models=models
-                )
-        except:
-            pass
+            if ollama_url:
+                # Ha localhost, ne próbáljuk meg elérni (nem fog működni)
+                if "localhost" not in ollama_url and "127.0.0.1" not in ollama_url:
+                    response = requests.get(f"{ollama_url}/api/tags", timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        models = [m["name"] for m in data.get("models", [])]
+                        distributed_network.update_node_status(
+                            node_id=node.node_id,
+                            status=NodeStatus.ONLINE,
+                            available_models=models
+                        )
+                        logger.info(f"✅ Node {node.node_id} models loaded: {len(models)} models")
+                    else:
+                        logger.warning(f"⚠️ Could not load models from {ollama_url}: HTTP {response.status_code}")
+                else:
+                    logger.warning(f"⚠️ Cannot verify models for localhost node {node.node_id}. Client should provide accessible URL.")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not load models for node {node.node_id}: {e}")
         
-        logger.info(f"Compute node registered: {node.node_id} ({request.get('name')}) from {request.get('ollama_url')}")
+        logger.info(f"✅ Compute node registered: {node.node_id} ({request.get('name')}) from {ollama_url}")
         return {
             "success": True,
             "node_id": node.node_id,

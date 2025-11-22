@@ -60,7 +60,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             
             // Automatikus regisztráció a distributed network-be
             await this.registerLocalNode();
-        } else {
+            } else {
             console.warn('Local Ollama not available');
             this.useLocalOllama = false;
         }
@@ -69,6 +69,36 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             console.log('Parallel mode enabled: using both resources simultaneously for each request');
         } else if (this.useHybridMode && this.useLocalOllama) {
             console.log('Hybrid mode enabled: load balancing between local GPU and remote server');
+        }
+    }
+    
+    /**
+     * Lokális IP cím detektálása a szerver oldali API segítségével
+     */
+    private async detectLocalIP(apiUrl: string): Promise<string | null> {
+        try {
+            // A szerver oldali API-nak kell egy endpoint, ami visszaadja a kliens IP-jét
+            // Jelenleg egyszerű megoldás: a kliens IP-t a request header-ből kapjuk
+            // De mivel a VS Code extension nem tudja közvetlenül, próbáljuk meg más módon
+            
+            // Alternatíva: használjuk a network interface-eket
+            const networkInterfaces = os.networkInterfaces();
+            for (const interfaceName in networkInterfaces) {
+                const addresses = networkInterfaces[interfaceName];
+                if (addresses) {
+                    for (const addr of addresses) {
+                        // IPv4, nem localhost, nem internal
+                        if (addr.family === 'IPv4' && !addr.internal && addr.address !== '127.0.0.1') {
+                            console.log(`📡 Found local IP: ${addr.address} on interface ${interfaceName}`);
+                            return addr.address;
+                        }
+                    }
+                }
+            }
+            return null;
+        } catch (error) {
+            console.error('IP detection error:', error);
+            return null;
         }
     }
     
@@ -88,12 +118,25 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             let localOllamaUrl = config.get<string>('localOllamaUrl', 'http://localhost:11434');
             
             // FONTOS: Ha localhost, akkor a szerver nem fogja tudni elérni a kliens gépet
-            // A distributed computing-hez a szervernek elérhető URL kell (pl. http://192.168.1.100:11434)
-            // Jelenleg localhost esetén csak akkor működik, ha a kliens és szerver ugyanazon a gépen futnak
+            // Automatikus IP detektálás: ha localhost van, próbáljuk meg megtalálni a saját IP-t
             if (localOllamaUrl.includes('localhost') || localOllamaUrl.includes('127.0.0.1')) {
-                console.warn('⚠️ WARNING: Using localhost for Ollama URL. For distributed computing to work, the server needs to access your local Ollama.');
-                console.warn('   Consider setting zedinark.localOllamaUrl to your machine\'s IP address (e.g., http://192.168.1.100:11434)');
-                console.warn('   Or ensure your local Ollama is accessible from the server network.');
+                console.log('🔍 Detecting local IP address for distributed computing...');
+                try {
+                    // Próbáljuk meg lekérni a saját IP-t a szervertől (ha elérhető)
+                    // Vagy használjuk a VS Code API-t
+                    const apiUrl = config.get<string>('apiUrl', 'http://135.181.165.27:8000');
+                    const clientIP = await this.detectLocalIP(apiUrl);
+                    if (clientIP) {
+                        // Cseréljük le a localhost-ot a detektált IP-re
+                        localOllamaUrl = localOllamaUrl.replace('localhost', clientIP).replace('127.0.0.1', clientIP);
+                        console.log(`✅ Using detected IP: ${localOllamaUrl}`);
+                    } else {
+                        console.warn('⚠️ Could not detect local IP. Server may not be able to access your local Ollama.');
+                        console.warn('   Consider setting zedinark.localOllamaUrl to your machine\'s IP address manually.');
+                    }
+                } catch (error) {
+                    console.warn('⚠️ IP detection failed:', error);
+                }
             }
             
             // Modellek lekérése
@@ -149,7 +192,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                     content: `✅ Helyi gép regisztrálva: ${nodeName}`
                 });
             }
-        } catch (error: any) {
+                    } catch (error: any) {
             console.error('❌ Failed to register local node:', error);
             console.error('   Error details:', error.message, error.stack);
             
@@ -209,7 +252,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                     this.localModels.forEach(model => {
                         allModels.push({ id: model, name: model, provider: 'local-gpu' });
                     });
-                } catch (error: any) {
+                    } catch (error: any) {
                     console.warn('Failed to load local models:', error);
                     this.localModels = [];
                 }
@@ -224,7 +267,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                         allModels.push({ id: model, name: model, provider: 'remote-server' });
                     }
                 });
-            } catch (error: any) {
+                    } catch (error: any) {
                 console.warn('Failed to load remote models:', error);
                 this.remoteModels = [];
             }
@@ -372,7 +415,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             if (localResult.length > remoteResult.length * 1.2) {
                 // Lokális válasz jelentősen hosszabb
                 if (this._view) {
-                    this._view.webview.postMessage({
+            this._view.webview.postMessage({
                         command: 'feedback',
                         type: 'info',
                         content: 'Párhuzamos válasz: lokális GPU válasza használva (részletesebb)'
@@ -382,14 +425,14 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             } else if (remoteResult.length > localResult.length * 1.2) {
                 // Távoli válasz jelentősen hosszabb
                 if (this._view) {
-                    this._view.webview.postMessage({
+            this._view.webview.postMessage({
                         command: 'feedback',
                         type: 'info',
                         content: 'Párhuzamos válasz: távoli szerver válasza használva (részletesebb)'
                     });
                 }
                 return remoteResult;
-            } else {
+        } else {
                 // Hasonló hosszúság - kombináljuk
                 const combined = this.combineResponses(localResult, remoteResult);
                 if (this._view) {
@@ -405,7 +448,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             // Csak lokális válasz sikeres
             console.log('Only local response received');
             if (this._view) {
-                this._view.webview.postMessage({
+            this._view.webview.postMessage({
                     command: 'feedback',
                     type: 'warning',
                     content: 'Párhuzamos válasz: csak lokális GPU válasza érkezett'
@@ -416,7 +459,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             // Csak távoli válasz sikeres
             console.log('Only remote response received');
             if (this._view) {
-                this._view.webview.postMessage({
+            this._view.webview.postMessage({
                     command: 'feedback',
                     type: 'warning',
                     content: 'Párhuzamos válasz: csak távoli szerver válasza érkezett'
