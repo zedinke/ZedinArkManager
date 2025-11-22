@@ -135,7 +135,7 @@ class LLMService:
         
         options = {
             "temperature": temperature,
-            "num_thread": min(self.num_threads, 12),  # Max 12 thread (több erőforrás)
+            "num_thread": self.num_threads,  # Minden CPU magot használunk (CPU optimalizált)
         }
         
         # CPU optimalizált mód: GPU-t nem használunk
@@ -252,7 +252,7 @@ class LLMService:
         # Optimalizált options stream-hez (12 CPU mag, 300 sor válasz)
         options = {
             "temperature": temperature,
-            "num_thread": min(self.num_threads, 12),  # Max 12 thread (több erőforrás)
+            "num_thread": self.num_threads,  # Minden CPU magot használunk (CPU optimalizált)
         }
         
         # CPU optimalizált mód: GPU-t nem használunk
