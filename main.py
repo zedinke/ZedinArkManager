@@ -826,6 +826,77 @@ async def get_current_project(api_key: Optional[str] = Security(verify_api_key))
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/distributed/register")
+async def register_compute_node(
+    request: Dict[str, Any],
+    api_auth: Optional[str] = Security(verify_api_key)
+):
+    """Compute node regisztrálása a distributed network-be"""
+    try:
+        node = distributed_network.register_node(
+            node_id=request.get("node_id"),
+            user_id=request.get("user_id", "user"),
+            name=request.get("name"),
+            ollama_url=request.get("ollama_url"),
+            api_key=request.get("api_key"),
+            gpu_count=request.get("gpu_count", 0),
+            gpu_memory=request.get("gpu_memory", 0),
+            cpu_cores=request.get("cpu_cores", 0)
+        )
+        
+        # Modellek lekérése (ha elérhető)
+        try:
+            import requests
+            ollama_url = request.get("ollama_url")
+            response = requests.get(f"{ollama_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                models = [m["name"] for m in data.get("models", [])]
+                distributed_network.update_node_status(
+                    node_id=node.node_id,
+                    status=NodeStatus.ONLINE,
+                    available_models=models
+                )
+        except:
+            pass
+        
+        logger.info(f"Compute node registered: {node.node_id} ({request.get('name')}) from {request.get('ollama_url')}")
+        return {
+            "success": True,
+            "node_id": node.node_id,
+            "message": f"Node {node.node_id} successfully registered"
+        }
+    except Exception as e:
+        logger.error(f"Failed to register compute node: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/distributed/stats")
+async def get_distributed_stats(api_key: Optional[str] = Security(verify_api_key)):
+    """Distributed network statisztikák"""
+    try:
+        stats = distributed_network.get_network_stats()
+        nodes = []
+        for node in distributed_network.nodes.values():
+            nodes.append({
+                "node_id": node.node_id,
+                "name": node.name,
+                "status": node.status.value,
+                "gpu_count": node.gpu_count,
+                "cpu_cores": node.cpu_cores,
+                "available_models": node.available_models,
+                "current_load": node.current_load,
+                "response_time": node.response_time
+            })
+        return {
+            **stats,
+            "nodes": nodes
+        }
+    except Exception as e:
+        logger.error(f"Failed to get distributed stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/project/structure")
 async def get_project_structure(max_depth: int = 3, api_key: Optional[str] = Security(verify_api_key)):
     """Projekt struktúra lekérése"""

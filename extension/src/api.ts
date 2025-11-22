@@ -88,6 +88,40 @@ export class ZedinArkAPI {
         }
     }
 
+    async registerComputeNode(
+        nodeId: string,
+        userId: string,
+        name: string,
+        ollamaUrl: string,
+        gpuCount: number = 0,
+        gpuMemory: number = 0,
+        cpuCores: number = 0
+    ): Promise<any> {
+        try {
+            const response = await this.client.post('/api/distributed/register', {
+                node_id: nodeId,
+                user_id: userId,
+                name: name,
+                ollama_url: ollamaUrl,
+                gpu_count: gpuCount,
+                gpu_memory: gpuMemory,
+                cpu_cores: cpuCores
+            });
+            return response.data;
+        } catch (error: any) {
+            throw new Error(`Failed to register compute node: ${error.response?.data?.detail || error.message}`);
+        }
+    }
+
+    async getDistributedStats(): Promise<any> {
+        try {
+            const response = await this.client.get('/api/distributed/stats');
+            return response.data;
+        } catch (error: any) {
+            throw new Error(`Failed to get distributed stats: ${error.response?.data?.detail || error.message}`);
+        }
+    }
+
     async listModels(): Promise<string[]> {
         try {
             const response = await this.client.get('/api/models');

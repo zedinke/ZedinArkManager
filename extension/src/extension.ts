@@ -1,12 +1,78 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import axios from 'axios';
 import { ZedinArkAPI } from './api';
+import { LocalOllamaAPI } from './localOllamaAPI';
 import { ChatPanel } from './chatPanel';
 import { SidebarChatViewProvider } from './sidebarChatView';
 
 let api: ZedinArkAPI;
+let localOllama: LocalOllamaAPI | null = null;
+
+async function registerLocalNode(api: ZedinArkAPI) {
+    try {
+        const config = vscode.workspace.getConfiguration('zedinark');
+        const useLocalOllama = config.get<boolean>('useLocalOllama', false);
+        const localOllamaUrl = config.get<string>('localOllamaUrl', 'http://localhost:11434');
+        
+        if (!useLocalOllama) {
+            return; // Ha nincs bekapcsolva a local Ollama, ne regisztráljuk
+        }
+        
+        // Ellenőrzés: elérhető-e a lokális Ollama
+        const localOllamaCheck = new LocalOllamaAPI(localOllamaUrl);
+        const isAvailable = await localOllamaCheck.checkConnection();
+        
+        if (!isAvailable) {
+            console.log('Local Ollama not available, skipping node registration');
+            return;
+        }
+        
+        // Modellek lekérése
+        const models = await localOllamaCheck.listModels();
+        
+        // Gépadatok gyűjtése
+        const hostname = os.hostname();
+        const platform = os.platform();
+        const arch = os.arch();
+        const cpus = os.cpus();
+        const cpuCores = cpus.length;
+        
+        // GPU detektálás (Windows: nvidia-smi, ha elérhető)
+        let gpuCount = 0;
+        let gpuMemory = 0;
+        try {
+            // Próbáljuk meg detektálni a GPU-t (Windows-on nvidia-smi)
+            // Ez csak akkor működik, ha a PATH-ban van az nvidia-smi
+            // TODO: jobb GPU detektálás implementálása
+        } catch (e) {
+            // GPU detektálás nem sikerült, marad 0
+        }
+        
+        // Node ID generálása
+        const nodeId = `user-${hostname}-${platform}`;
+        const nodeName = `${hostname} (${platform} ${arch})`;
+        
+        // Regisztrálás
+        await api.registerComputeNode(
+            nodeId,
+            'user',
+            nodeName,
+            localOllamaUrl,
+            gpuCount,
+            gpuMemory,
+            cpuCores
+        );
+        
+        console.log(`Local compute node registered: ${nodeId} (${cpuCores} CPU cores, ${gpuCount} GPU)`);
+        vscode.window.showInformationMessage(`✅ Helyi gép regisztrálva a distributed network-ben!`);
+    } catch (error: any) {
+        console.error('Failed to register local node:', error);
+        // Ne jelenítsünk hibát, mert ez opcionális funkció
+    }
+}
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('ZedinArk Manager extension is now active!');
@@ -17,6 +83,11 @@ export function activate(context: vscode.ExtensionContext) {
     const apiKey = config.get<string>('apiKey', '');
     
     api = new ZedinArkAPI(apiUrl, apiKey);
+    
+    // Helyi gép regisztrálása (ha be van kapcsolva a local Ollama)
+    registerLocalNode(api).catch(err => {
+        console.error('Error registering local node:', err);
+    });
 
     // Sidebar chat view - regisztrálás azonnal
     console.log('Registering sidebar view provider...');
