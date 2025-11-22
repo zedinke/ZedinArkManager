@@ -89,7 +89,25 @@ class DistributedComputingNetwork:
                      ollama_url: str, api_key: Optional[str] = None,
                      gpu_count: int = 0, gpu_memory: int = 0, 
                      cpu_cores: int = 0) -> ComputeNode:
-        """Csomópont regisztrálása"""
+        """Csomópont regisztrálása vagy frissítése"""
+        # Ha a node már létezik, frissítsük (pl. újraregisztráció timeout után)
+        if node_id in self.nodes:
+            existing_node = self.nodes[node_id]
+            # Frissítsük a last_seen-t és állítsuk ONLINE-ra (ha BUSY volt)
+            existing_node.last_seen = datetime.now()
+            if existing_node.status == NodeStatus.BUSY:
+                existing_node.status = NodeStatus.ONLINE
+                logger.info(f"🔄 Node re-registered (was BUSY): {node_id} ({name}) from {ollama_url}")
+            else:
+                logger.info(f"🔄 Node re-registered: {node_id} ({name}) from {ollama_url}")
+            # Frissítsük az adatokat is, ha változtak
+            existing_node.ollama_url = ollama_url
+            existing_node.gpu_count = gpu_count
+            existing_node.gpu_memory = gpu_memory
+            existing_node.cpu_cores = cpu_cores
+            return existing_node
+        
+        # Új node regisztrálása
         node = ComputeNode(
             node_id=node_id,
             user_id=user_id,
