@@ -765,38 +765,60 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
     </div>
 
     <script>
-        (function() {
-            const vscode = acquireVsCodeApi();
-            const messagesDiv = document.getElementById('messages');
-            const messageInput = document.getElementById('messageInput');
-            const sendButton = document.getElementById('sendButton');
-            const updateButton = document.getElementById('updateButton');
-            const modeButtons = document.querySelectorAll('.mode-btn');
-            
-            let currentMode = 'ask';
+        const vscode = acquireVsCodeApi();
+        let messagesDiv, messageInput, sendButton, updateButton, modeButtons;
+        let currentMode = 'ask';
+
+        function initialize() {
+            messagesDiv = document.getElementById('messages');
+            messageInput = document.getElementById('messageInput');
+            sendButton = document.getElementById('sendButton');
+            updateButton = document.getElementById('updateButton');
+            modeButtons = document.querySelectorAll('.mode-btn');
+
+            if (!messagesDiv || !messageInput || !sendButton || !updateButton || modeButtons.length === 0) {
+                console.error('❌ Elements not found, retrying...');
+                setTimeout(initialize, 100);
+                return;
+            }
+
+            console.log('✅ All elements found, attaching event listeners...');
 
             // Update button
-            updateButton.addEventListener('click', () => {
+            updateButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔄 Update button clicked');
                 vscode.postMessage({ command: 'checkForUpdates' });
             });
 
             // Mode buttons
             modeButtons.forEach(btn => {
-                btn.addEventListener('click', () => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     modeButtons.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     currentMode = btn.dataset.mode;
+                    console.log('🔄 Mode changed to:', currentMode);
                     vscode.postMessage({ command: 'switchMode', mode: currentMode });
                 });
             });
 
             // Send button
-            sendButton.addEventListener('click', sendMessage);
+            sendButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🖱️ Send button clicked');
+                sendMessage();
+            });
 
             // Enter key
             messageInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
+                    e.stopPropagation();
+                    console.log('⌨️ Enter pressed');
                     sendMessage();
                 }
             });
@@ -807,21 +829,33 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
                 messageInput.style.height = Math.min(messageInput.scrollHeight, 200) + 'px';
             });
 
-            function sendMessage() {
-                const text = messageInput.value.trim();
-                if (!text) return;
+            console.log('✅ Event listeners attached successfully');
+        }
 
-                addMessage('user', text);
-                messageInput.value = '';
-                messageInput.style.height = '60px';
-                sendButton.disabled = true;
-
-                vscode.postMessage({
-                    command: 'sendMessage',
-                    text: text,
-                    mode: currentMode
-                });
+        function sendMessage() {
+            if (!messageInput || !sendButton) {
+                console.error('❌ Elements not available in sendMessage');
+                return;
             }
+
+            const text = messageInput.value.trim();
+            if (!text) {
+                console.log('⚠️ Empty message, returning');
+                return;
+            }
+
+            console.log('📤 Sending message:', text.substring(0, 50));
+            addMessage('user', text);
+            messageInput.value = '';
+            messageInput.style.height = '60px';
+            sendButton.disabled = true;
+
+            vscode.postMessage({
+                command: 'sendMessage',
+                text: text,
+                mode: currentMode
+            });
+        }
 
             function addMessage(role, content) {
                 const messageDiv = document.createElement('div');
@@ -873,38 +907,110 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
                 return div.innerHTML;
             }
 
-            window.addEventListener('message', event => {
-                const message = event.data;
-                switch (message.command) {
-                    case 'receiveMessage':
-                        addMessage('assistant', message.response);
-                        sendButton.disabled = false;
-                        messageInput.focus();
-                        break;
-                    case 'error':
-                        addMessage('assistant', '❌ Hiba: ' + message.error);
-                        sendButton.disabled = false;
-                        messageInput.focus();
-                        break;
-                    case 'loading':
-                        if (message.loading) {
-                            const loadingDiv = document.createElement('div');
-                            loadingDiv.className = 'loading';
-                            loadingDiv.id = 'loading';
-                            loadingDiv.innerHTML = '<div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span>AI gondolkodik...</span>';
+        function addMessage(role, content) {
+            if (!messagesDiv) {
+                messagesDiv = document.getElementById('messages');
+                if (!messagesDiv) {
+                    console.error('❌ Messages container not found');
+                    return;
+                }
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + role;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            // Markdown-like formatting
+            content = escapeHtml(content);
+            
+            // Code blocks first - escape backticks to avoid template string issues
+            const backtick = String.fromCharCode(96);
+            const codeBlockPattern = backtick + backtick + backtick + '(\\w+)?\\n?([\\s\\S]*?)' + backtick + backtick + backtick;
+            const codeBlockRegex = new RegExp(codeBlockPattern, 'g');
+            content = content.replace(codeBlockRegex, function(match, lang, code) {
+                const cleanCode = code.trim();
+                return '<pre><code>' + cleanCode + '</code></pre>';
+            });
+            
+            // Then inline code (single backticks, but not inside code blocks)
+            const inlineCodePattern = backtick + '([^' + backtick + '\\n]+)' + backtick;
+            const inlineCodeRegex = new RegExp(inlineCodePattern, 'g');
+            content = content.replace(inlineCodeRegex, '<code>$1</code>');
+            
+            // Finally, replace newlines (but not inside code blocks)
+            // Split by code blocks, replace newlines in text parts only
+            const codeBlockSplitter = /(<pre><code>[\s\S]*?<\/code><\/pre>)/g;
+            const parts = content.split(codeBlockSplitter);
+            content = parts.map(function(part) {
+                if (part.match(/^<pre><code>[\s\S]*?<\/code><\/pre>$/)) {
+                    // This is a code block, keep as is
+                    return part;
+                } else {
+                    // This is text, replace newlines
+                    return part.replace(/\n/g, '<br>');
+                }
+            }).join('');
+            
+            contentDiv.innerHTML = content;
+            messageDiv.appendChild(contentDiv);
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        window.addEventListener('message', event => {
+            const message = event.data;
+            switch (message.command) {
+                case 'receiveMessage':
+                    addMessage('assistant', message.response);
+                    if (sendButton) sendButton.disabled = false;
+                    if (messageInput) messageInput.focus();
+                    break;
+                case 'error':
+                    addMessage('assistant', '❌ Hiba: ' + message.error);
+                    if (sendButton) sendButton.disabled = false;
+                    if (messageInput) messageInput.focus();
+                    break;
+                case 'loading':
+                    if (!messagesDiv) {
+                        messagesDiv = document.getElementById('messages');
+                    }
+                    if (message.loading) {
+                        const loadingDiv = document.createElement('div');
+                        loadingDiv.className = 'loading';
+                        loadingDiv.id = 'loading';
+                        loadingDiv.innerHTML = '<div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span>AI gondolkodik...</span>';
+                        if (messagesDiv) {
                             messagesDiv.appendChild(loadingDiv);
                             messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                        } else {
-                            const loading = document.getElementById('loading');
-                            if (loading) loading.remove();
                         }
-                        break;
-                    case 'fileCreated':
-                        addMessage('assistant', '✅ Fájl létrehozva: ' + message.filePath);
-                        break;
-                }
-            });
-        })();
+                    } else {
+                        const loading = document.getElementById('loading');
+                        if (loading) loading.remove();
+                    }
+                    break;
+                case 'fileCreated':
+                    addMessage('assistant', '✅ Fájl létrehozva: ' + message.filePath);
+                    break;
+            }
+        });
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initialize);
+        } else {
+            initialize();
+        }
+
+        // Also try after a short delay
+        setTimeout(initialize, 100);
     </script>
 </body>
 </html>`;
