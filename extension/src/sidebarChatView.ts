@@ -47,6 +47,44 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    private postThinking(thinking: string) {
+        this._view?.webview.postMessage({
+            command: 'thinking',
+            content: thinking
+        });
+    }
+
+    private postPlan(plan: string) {
+        this._view?.webview.postMessage({
+            command: 'plan',
+            content: plan
+        });
+    }
+
+    private postTodoList(todos: Array<{id: string, task: string, priority: 'high' | 'medium' | 'low', completed: boolean}>) {
+        this._view?.webview.postMessage({
+            command: 'todoList',
+            todos: todos
+        });
+    }
+
+    private postFeedback(feedback: string, type: 'info' | 'success' | 'warning' | 'error') {
+        this._view?.webview.postMessage({
+            command: 'feedback',
+            content: feedback,
+            type: type
+        });
+    }
+
+    private postCodeSnippet(code: string, language: string, filePath?: string) {
+        this._view?.webview.postMessage({
+            command: 'codeSnippet',
+            code: code,
+            language: language,
+            filePath: filePath
+        });
+    }
+
     private async handleMessage(text: string, mode: string) {
         if (!this._view) return;
 
@@ -742,6 +780,205 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
                 opacity: 1;
             }
         }
+
+        /* Thinking container */
+        .thinking-container {
+            display: flex;
+            gap: 8px;
+            padding: 12px;
+            margin: 8px 0;
+            background: var(--vscode-textBlockQuote-background);
+            border-left: 3px solid var(--vscode-button-background);
+            border-radius: 6px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .thinking-icon {
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .thinking-content {
+            flex: 1;
+            color: var(--vscode-foreground);
+            white-space: pre-wrap;
+        }
+
+        /* Plan container */
+        .plan-container {
+            margin: 8px 0;
+            background: var(--vscode-textBlockQuote-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .plan-header {
+            padding: 8px 12px;
+            background: var(--vscode-button-secondaryBackground);
+            font-weight: 600;
+            font-size: 12px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+        }
+
+        .plan-content {
+            padding: 12px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--vscode-foreground);
+        }
+
+        /* Todo container */
+        .todo-container {
+            margin: 8px 0;
+            background: var(--vscode-textBlockQuote-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .todo-header {
+            padding: 8px 12px;
+            background: var(--vscode-button-secondaryBackground);
+            font-weight: 600;
+            font-size: 12px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+        }
+
+        .todo-list {
+            list-style: none;
+            padding: 8px;
+            margin: 0;
+        }
+
+        .todo-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            margin: 4px 0;
+            border-radius: 4px;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .todo-item:hover {
+            background: var(--vscode-list-hoverBackground);
+        }
+
+        .todo-item.checked {
+            opacity: 0.6;
+            text-decoration: line-through;
+        }
+
+        .todo-item.priority-high {
+            border-left: 3px solid #f48771;
+        }
+
+        .todo-item.priority-medium {
+            border-left: 3px solid #dcdcaa;
+        }
+
+        .todo-item.priority-low {
+            border-left: 3px solid #89d185;
+        }
+
+        .todo-text {
+            flex: 1;
+            color: var(--vscode-foreground);
+        }
+
+        .todo-priority {
+            font-size: 11px;
+            opacity: 0.8;
+        }
+
+        /* Feedback container */
+        .feedback {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            margin: 8px 0;
+            border-radius: 6px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .feedback-info {
+            background: var(--vscode-textBlockQuote-background);
+            border-left: 3px solid var(--vscode-button-background);
+        }
+
+        .feedback-success {
+            background: rgba(89, 209, 133, 0.2);
+            border-left: 3px solid #89d185;
+        }
+
+        .feedback-warning {
+            background: rgba(220, 220, 170, 0.2);
+            border-left: 3px solid #dcdcaa;
+        }
+
+        .feedback-error {
+            background: rgba(244, 135, 113, 0.2);
+            border-left: 3px solid #f48771;
+        }
+
+        .feedback-icon {
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .feedback-content {
+            flex: 1;
+            color: var(--vscode-foreground);
+        }
+
+        /* Code snippet container */
+        .code-snippet-container {
+            margin: 8px 0;
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .code-snippet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 12px;
+            background: var(--vscode-button-secondaryBackground);
+            border-bottom: 1px solid var(--vscode-panel-border);
+            font-size: 11px;
+        }
+
+        .code-file {
+            font-weight: 600;
+            color: var(--vscode-foreground);
+        }
+
+        .code-lang {
+            padding: 2px 6px;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border-radius: 3px;
+            font-size: 10px;
+        }
+
+        .code-block {
+            margin: 0;
+            border-radius: 0;
+        }
+
+        .inline-code {
+            background: var(--vscode-textCodeBlock-background);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
+            font-size: 0.9em;
+        }
     </style>
 </head>
 <body>
@@ -857,57 +1094,8 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
             });
         }
 
-            function addMessage(role, content) {
-                const messageDiv = document.createElement('div');
-                messageDiv.className = 'message ' + role;
-                
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'message-content';
-                
-                // Markdown-like formatting
-                content = escapeHtml(content);
-                
-                // Code blocks first - escape backticks to avoid template string issues
-                const backtick = String.fromCharCode(96);
-                const codeBlockPattern = backtick + backtick + backtick + '(\\w+)?\\n?([\\s\\S]*?)' + backtick + backtick + backtick;
-                const codeBlockRegex = new RegExp(codeBlockPattern, 'g');
-                content = content.replace(codeBlockRegex, function(match, lang, code) {
-                    const cleanCode = code.trim();
-                    return '<pre><code>' + cleanCode + '</code></pre>';
-                });
-                
-                // Then inline code (single backticks, but not inside code blocks)
-                const inlineCodePattern = backtick + '([^' + backtick + '\\n]+)' + backtick;
-                const inlineCodeRegex = new RegExp(inlineCodePattern, 'g');
-                content = content.replace(inlineCodeRegex, '<code>$1</code>');
-                
-                // Finally, replace newlines (but not inside code blocks)
-                // Split by code blocks, replace newlines in text parts only
-                const codeBlockSplitter = /(<pre><code>[\s\S]*?<\/code><\/pre>)/g;
-                const parts = content.split(codeBlockSplitter);
-                content = parts.map(function(part) {
-                    if (part.match(/^<pre><code>[\s\S]*?<\/code><\/pre>$/)) {
-                        // This is a code block, keep as is
-                        return part;
-                    } else {
-                        // This is text, replace newlines
-                        return part.replace(/\n/g, '<br>');
-                    }
-                }).join('');
-                
-                contentDiv.innerHTML = content;
-                messageDiv.appendChild(contentDiv);
-                messagesDiv.appendChild(messageDiv);
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            }
 
-            function escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
-
-        function addMessage(role, content) {
+        function addMessage(role, content, metadata) {
             if (!messagesDiv) {
                 messagesDiv = document.getElementById('messages');
                 if (!messagesDiv) {
@@ -918,6 +1106,9 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
 
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message ' + role;
+            if (metadata && metadata.id) {
+                messageDiv.setAttribute('data-message-id', metadata.id);
+            }
             
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
@@ -931,24 +1122,22 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
             const codeBlockRegex = new RegExp(codeBlockPattern, 'g');
             content = content.replace(codeBlockRegex, function(match, lang, code) {
                 const cleanCode = code.trim();
-                return '<pre><code>' + cleanCode + '</code></pre>';
+                const langClass = lang ? 'language-' + lang : '';
+                return '<pre class="code-block ' + langClass + '"><code>' + cleanCode + '</code></pre>';
             });
             
             // Then inline code (single backticks, but not inside code blocks)
             const inlineCodePattern = backtick + '([^' + backtick + '\\n]+)' + backtick;
             const inlineCodeRegex = new RegExp(inlineCodePattern, 'g');
-            content = content.replace(inlineCodeRegex, '<code>$1</code>');
+            content = content.replace(inlineCodeRegex, '<code class="inline-code">$1</code>');
             
             // Finally, replace newlines (but not inside code blocks)
-            // Split by code blocks, replace newlines in text parts only
-            const codeBlockSplitter = /(<pre><code>[\s\S]*?<\/code><\/pre>)/g;
+            const codeBlockSplitter = /(<pre[^>]*>[\s\S]*?<\/pre>)/g;
             const parts = content.split(codeBlockSplitter);
             content = parts.map(function(part) {
-                if (part.match(/^<pre><code>[\s\S]*?<\/code><\/pre>$/)) {
-                    // This is a code block, keep as is
+                if (part.match(/^<pre[^>]*>[\s\S]*?<\/pre>$/)) {
                     return part;
                 } else {
-                    // This is text, replace newlines
                     return part.replace(/\n/g, '<br>');
                 }
             }).join('');
@@ -957,6 +1146,80 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
             messageDiv.appendChild(contentDiv);
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            return messageDiv;
+        }
+
+        function addThinking(content) {
+            if (!messagesDiv) return;
+            const thinkingDiv = document.createElement('div');
+            thinkingDiv.className = 'thinking-container';
+            thinkingDiv.innerHTML = '<div class="thinking-icon">💭</div><div class="thinking-content">' + escapeHtml(content) + '</div>';
+            messagesDiv.appendChild(thinkingDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addPlan(content) {
+            if (!messagesDiv) return;
+            const planDiv = document.createElement('div');
+            planDiv.className = 'plan-container';
+            planDiv.innerHTML = '<div class="plan-header">📋 Terv</div><div class="plan-content">' + formatMarkdown(content) + '</div>';
+            messagesDiv.appendChild(planDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addTodoList(todos) {
+            if (!messagesDiv) return;
+            const todoDiv = document.createElement('div');
+            todoDiv.className = 'todo-container';
+            const header = '<div class="todo-header">📝 To-Do Lista</div>';
+            const list = '<ul class="todo-list">' + todos.map(todo => {
+                const priorityClass = 'priority-' + todo.priority;
+                const checked = todo.completed ? 'checked' : '';
+                return '<li class="todo-item ' + priorityClass + ' ' + checked + '" data-id="' + todo.id + '">' +
+                    '<input type="checkbox" ' + (todo.completed ? 'checked' : '') + ' disabled>' +
+                    '<span class="todo-text">' + escapeHtml(todo.task) + '</span>' +
+                    '<span class="todo-priority">' + getPriorityLabel(todo.priority) + '</span>' +
+                    '</li>';
+            }).join('') + '</ul>';
+            todoDiv.innerHTML = header + list;
+            messagesDiv.appendChild(todoDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addFeedback(content, type) {
+            if (!messagesDiv) return;
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.className = 'feedback feedback-' + type;
+            const icons = { info: 'ℹ️', success: '✅', warning: '⚠️', error: '❌' };
+            feedbackDiv.innerHTML = '<span class="feedback-icon">' + (icons[type] || 'ℹ️') + '</span><span class="feedback-content">' + escapeHtml(content) + '</span>';
+            messagesDiv.appendChild(feedbackDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addCodeSnippet(code, language, filePath) {
+            if (!messagesDiv) return;
+            const snippetDiv = document.createElement('div');
+            snippetDiv.className = 'code-snippet-container';
+            const header = filePath ? '<div class="code-snippet-header"><span class="code-file">📄 ' + escapeHtml(filePath) + '</span><span class="code-lang">' + escapeHtml(language) + '</span></div>' : '';
+            snippetDiv.innerHTML = header + '<pre class="code-block language-' + escapeHtml(language) + '"><code>' + escapeHtml(code) + '</code></pre>';
+            messagesDiv.appendChild(snippetDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function formatMarkdown(text) {
+            text = escapeHtml(text);
+            const backtick = String.fromCharCode(96);
+            text = text.replace(new RegExp(backtick + backtick + backtick + '(\\w+)?\\n?([\\s\\S]*?)' + backtick + backtick + backtick, 'g'), '<pre><code>$2</code></pre>');
+            text = text.replace(new RegExp(backtick + '([^' + backtick + ']+)' + backtick, 'g'), '<code>$1</code>');
+            text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            text = text.replace(/\n/g, '<br>');
+            return text;
+        }
+
+        function getPriorityLabel(priority) {
+            const labels = { high: '🔴 Magas', medium: '🟡 Közepes', low: '🟢 Alacsony' };
+            return labels[priority] || '';
         }
 
         function escapeHtml(text) {
@@ -998,6 +1261,21 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
                     break;
                 case 'fileCreated':
                     addMessage('assistant', '✅ Fájl létrehozva: ' + message.filePath);
+                    break;
+                case 'thinking':
+                    addThinking(message.content);
+                    break;
+                case 'plan':
+                    addPlan(message.content);
+                    break;
+                case 'todoList':
+                    addTodoList(message.todos);
+                    break;
+                case 'feedback':
+                    addFeedback(message.content, message.type || 'info');
+                    break;
+                case 'codeSnippet':
+                    addCodeSnippet(message.code, message.language, message.filePath);
                     break;
             }
         });
