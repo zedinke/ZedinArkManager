@@ -307,62 +307,36 @@ class DistributedComputingNetwork:
                 logger.error(f"❌ Node {node_id} error: {error_msg}")
                 raise Exception(f"Node {node_id} failed: {error_msg}")
         
-        # Több node esetén: első válasz visszaadása (gyorsabb)
-        # Vagy mindkét válasz kombinálása, ha mindkettő sikeres
-        done, pending = await asyncio.wait(futures, return_when=asyncio.FIRST_COMPLETED)
+        # Több node esetén: VÁRJUNK MINDKÉT VÁLASZRA és kombináljuk
+        # Ez biztosítja, hogy mindkét erőforrás valóban használva legyen
+        logger.info(f"⏳ Waiting for responses from {len(futures)} nodes (parallel processing)...")
         
-        # Első sikeres válasz feldolgozása
-        first_result = None
-        first_node_id = None
-        
-        for completed in done:
-            node_id, future = [(nid, f) for nid, f in futures if f == completed][0]
+        # Várakozás MINDKÉT válaszra (párhuzamos feldolgozás)
+        for node_id, future in futures:
             try:
-                result = await future
+                result = await asyncio.wait_for(future, timeout=300)  # 5 perc timeout
                 results[node_id] = result
-                first_result = result
-                first_node_id = node_id
                 if node_id in self.nodes:
                     self.nodes[node_id].total_requests += 1
                     self.nodes[node_id].successful_requests += 1
-                logger.info(f"✅ Node {node_id} responded successfully (first)")
-                break
+                logger.info(f"✅ Node {node_id} responded successfully")
+            except asyncio.TimeoutError:
+                errors[node_id] = "Timeout (300s)"
+                logger.warning(f"⏱️ Node {node_id} timeout: No response within 300 seconds")
+                if node_id in self.nodes:
+                    self.nodes[node_id].total_requests += 1
+                    self.update_node_status(node_id, NodeStatus.BUSY)
             except Exception as e:
                 error_msg = str(e)
                 errors[node_id] = error_msg
-                # Ne állítsuk ERROR-ra azonnal, csak BUSY-ra (lehet, hogy ideiglenes probléma)
+                logger.warning(f"⚠️ Node {node_id} error: {error_msg}")
                 if node_id in self.nodes:
+                    self.nodes[node_id].total_requests += 1
                     # Csak akkor állítsuk ERROR-ra, ha valódi hiba van (nem timeout/connection)
                     if "timeout" not in error_msg.lower() and "connection" not in error_msg.lower():
                         self.update_node_status(node_id, NodeStatus.ERROR)
                     else:
-                        # Timeout/connection hibák esetén csak BUSY-ra állítjuk
                         self.update_node_status(node_id, NodeStatus.BUSY)
-                logger.warning(f"⚠️ Node {node_id} error: {error_msg}")
-        
-        # Várakozás a többi node-ra (ha van), de nem blokkoljuk a választ
-        if pending:
-            # Várakozás a többi node-ra (max 5 másodperc, hogy ne lassítsa)
-            remaining_futures = [(nid, f) for nid, f in futures if f in pending]
-            for node_id, future in remaining_futures:
-                try:
-                    result = await asyncio.wait_for(future, timeout=5)  # Rövidebb timeout a kombináláshoz
-                    results[node_id] = result
-                    if node_id in self.nodes:
-                        self.nodes[node_id].total_requests += 1
-                        self.nodes[node_id].successful_requests += 1
-                    logger.info(f"✅ Node {node_id} responded successfully (additional)")
-                except asyncio.TimeoutError:
-                    errors[node_id] = "Timeout (additional response)"
-                    logger.debug(f"⏱️ Node {node_id} timeout (additional, not critical)")
-                    if node_id in self.nodes:
-                        self.nodes[node_id].total_requests += 1
-                except Exception as e:
-                    error_msg = str(e)
-                    errors[node_id] = error_msg
-                    logger.debug(f"⚠️ Node {node_id} error (additional): {error_msg}")
-                    if node_id in self.nodes:
-                        self.nodes[node_id].total_requests += 1
         
         task.results = results
         task.status = "completed" if results else "failed"
