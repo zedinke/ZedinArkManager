@@ -535,14 +535,14 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
     private async handleParallelRequest(model: string): Promise<string> {
         console.log('Parallel mode: sending request to both resources simultaneously');
         
+        // Workspace útvonal lekérése
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        const workspacePath = workspaceFolders && workspaceFolders.length > 0 
+            ? workspaceFolders[0].uri.fsPath 
+            : undefined;
+        
         // Párhuzamos kérések indítása
         const [localResponse, remoteResponse] = await Promise.allSettled([
-            // Workspace útvonal lekérése
-            const workspaceFolders = vscode.workspace.workspaceFolders;
-            const workspacePath = workspaceFolders && workspaceFolders.length > 0 
-                ? workspaceFolders[0].uri.fsPath 
-                : undefined;
-            
             this.localOllama!.chatWithHistory(this.conversationHistory, model),
             this.api.chatWithHistory(this.conversationHistory, model, workspacePath)
         ]);
