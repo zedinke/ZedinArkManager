@@ -144,9 +144,15 @@ export class ZedinArkAPI {
             const response = await this.client.post('/api/chat', {
                 messages: messages,
                 model: model
+            }, {
+                timeout: 300000, // 5 perc timeout (nagy modellek esetén)
+                responseType: 'json'
             });
             return response.data.response || '';
         } catch (error: any) {
+            if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+                throw new Error(`Chat timeout: A válasz túl sokáig tart. Próbáld újra vagy válassz egy gyorsabb modellt.`);
+            }
             throw new Error(`Chat failed: ${error.response?.data?.detail || error.message}`);
         }
     }
