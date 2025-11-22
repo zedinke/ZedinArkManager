@@ -201,10 +201,17 @@ VÉGEZD EL A FELADATOT A FENTI FORMÁTUMBAN!`;
     private async executeAgentActions(response: string, workspacePath: string) {
         let actionsPerformed = false;
         
+        console.log('🔍 Executing agent actions, workspace:', workspacePath);
+        console.log('📝 Response length:', response.length);
+        console.log('📄 Response preview:', response.substring(0, 500));
+        
         try {
+            // Több regex pattern a különböző formátumokhoz
             const createFilePatterns = [
                 /CREATE_FILE:\s*([^\n`]+)\s*\n\s*```(\w+)?\s*\n([\s\S]*?)```/g,
                 /CREATE_FILE:\s*([^\n`]+)\s*\n\s*```\s*\n([\s\S]*?)```/g,
+                /CREATE_FILE[:\s]+([^\n`]+)\s*\n\s*```(\w+)?\s*\n([\s\S]*?)```/g,
+                /CREATE_FILE[:\s]+([^\n`]+)\s*\r?\n\s*```(\w+)?\s*\r?\n([\s\S]*?)```/g,
             ];
             
             for (const regex of createFilePatterns) {
@@ -212,6 +219,8 @@ VÉGEZD EL A FELADATOT A FENTI FORMÁTUMBAN!`;
                 regex.lastIndex = 0;
                 
                 while ((match = regex.exec(response)) !== null) {
+                    console.log('📄 Found CREATE_FILE match:', match[0].substring(0, 200));
+                    
                     let filePath: string;
                     let actualContent: string;
                     
@@ -222,13 +231,22 @@ VÉGEZD EL A FELADATOT A FENTI FORMÁTUMBAN!`;
                         filePath = match[1].trim();
                         actualContent = match[2].trim();
                     } else {
+                        console.warn('⚠️ Unexpected match format:', match.length);
                         continue;
                     }
                     
-                    if (!filePath || !actualContent) continue;
+                    if (!filePath || !actualContent) {
+                        console.warn('⚠️ Missing filePath or content:', { filePath, contentLength: actualContent?.length });
+                        continue;
+                    }
                     
                     const normalizedPath = filePath.replace(/^\.\//, '').replace(/^\//, '');
                     const fullPath = path.join(workspacePath, normalizedPath);
+                    
+                    console.log('📝 Creating file:');
+                    console.log('  - Path:', normalizedPath);
+                    console.log('  - Full path:', fullPath);
+                    console.log('  - Content length:', actualContent.length);
                     
                     try {
                         await this.createFile(fullPath, actualContent);
@@ -240,8 +258,11 @@ VÉGEZD EL A FELADATOT A FENTI FORMÁTUMBAN!`;
                         });
                         
                         vscode.window.showInformationMessage(`✅ Fájl létrehozva: ${normalizedPath}`);
+                        console.log(`✅ File created successfully: ${normalizedPath}`);
                     } catch (error: any) {
-                        vscode.window.showErrorMessage(`❌ Hiba: ${error.message}`);
+                        const errorMsg = `❌ Error creating file ${normalizedPath}: ${error.message}`;
+                        console.error(errorMsg, error);
+                        vscode.window.showErrorMessage(errorMsg);
                     }
                 }
             }
@@ -592,8 +613,11 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
             padding: 12px;
             margin: 8px 0;
             overflow-x: auto;
-            max-height: calc(1.5em * 10 + 24px);
+            max-height: calc(1.5em * 10 + 24px); /* Exactly 10 lines (line-height: 1.5 * 10 + padding) */
             overflow-y: auto;
+            position: relative;
+            font-size: 13px;
+            line-height: 1.5;
         }
 
         .message-content pre code {
@@ -603,6 +627,29 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
             color: var(--vscode-textCodeBlock-foreground, var(--vscode-foreground));
             display: block;
             white-space: pre;
+            padding: 0;
+            background: transparent;
+            margin: 0;
+        }
+
+        /* Scrollbar styling for code blocks */
+        .message-content pre::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .message-content pre::-webkit-scrollbar-track {
+            background: var(--vscode-scrollbarSlider-background, transparent);
+            border-radius: 4px;
+        }
+
+        .message-content pre::-webkit-scrollbar-thumb {
+            background: var(--vscode-scrollbarSlider-hoverBackground, var(--vscode-descriptionForeground));
+            border-radius: 4px;
+        }
+
+        .message-content pre::-webkit-scrollbar-thumb:hover {
+            background: var(--vscode-scrollbarSlider-activeBackground, var(--vscode-foreground));
         }
 
         .message-content code:not(pre code) {
@@ -783,14 +830,36 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
                 const contentDiv = document.createElement('div');
                 contentDiv.className = 'message-content';
                 
-                // Simple markdown-like formatting
+                // Markdown-like formatting
                 content = escapeHtml(content);
+                
+                // Code blocks first - escape backticks to avoid template string issues
                 const backtick = String.fromCharCode(96);
-                const codeBlockPattern = backtick + backtick + backtick + '([\\s\\S]*?)' + backtick + backtick + backtick;
-                content = content.replace(new RegExp(codeBlockPattern, 'g'), '<pre><code>$1</code></pre>');
-                const inlineCodePattern = backtick + '([^' + backtick + ']+)' + backtick;
-                content = content.replace(new RegExp(inlineCodePattern, 'g'), '<code>$1</code>');
-                content = content.replace(/\\n/g, '<br>');
+                const codeBlockPattern = backtick + backtick + backtick + '(\\w+)?\\n?([\\s\\S]*?)' + backtick + backtick + backtick;
+                const codeBlockRegex = new RegExp(codeBlockPattern, 'g');
+                content = content.replace(codeBlockRegex, function(match, lang, code) {
+                    const cleanCode = code.trim();
+                    return '<pre><code>' + cleanCode + '</code></pre>';
+                });
+                
+                // Then inline code (single backticks, but not inside code blocks)
+                const inlineCodePattern = backtick + '([^' + backtick + '\\n]+)' + backtick;
+                const inlineCodeRegex = new RegExp(inlineCodePattern, 'g');
+                content = content.replace(inlineCodeRegex, '<code>$1</code>');
+                
+                // Finally, replace newlines (but not inside code blocks)
+                // Split by code blocks, replace newlines in text parts only
+                const codeBlockSplitter = /(<pre><code>[\s\S]*?<\/code><\/pre>)/g;
+                const parts = content.split(codeBlockSplitter);
+                content = parts.map(function(part) {
+                    if (part.match(/^<pre><code>[\s\S]*?<\/code><\/pre>$/)) {
+                        // This is a code block, keep as is
+                        return part;
+                    } else {
+                        // This is text, replace newlines
+                        return part.replace(/\n/g, '<br>');
+                    }
+                }).join('');
                 
                 contentDiv.innerHTML = content;
                 messageDiv.appendChild(contentDiv);
