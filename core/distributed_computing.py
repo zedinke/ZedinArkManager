@@ -160,13 +160,14 @@ class DistributedComputingNetwork:
             if not is_server_node:
                 # ERROR státuszban lévő node-ot kihagyjuk
                 if node.status == NodeStatus.ERROR:
+                    logger.debug(f"⏭️ Skipping ERROR node: {node.node_id}")
                     continue
                 # BUSY node-okat is használjuk (lehet, hogy most már elérhető)
                 elif node.status == NodeStatus.BUSY:
-                    # BUSY node-okat is hozzáadjuk, de csak akkor, ha nem régen volt aktív (10 perc)
+                    # BUSY node-okat is hozzáadjuk, de csak akkor, ha nem régen volt aktív (15 perc - növelve)
                     age = (datetime.now() - node.last_seen).total_seconds()
-                    if age < 600:  # 10 perc
-                        logger.debug(f"🔄 Including BUSY node: {node.node_id} (will retry, age: {age:.1f}s)")
+                    if age < 900:  # 15 perc (növelve, hogy ne legyen kihagyva)
+                        logger.info(f"🔄 Including BUSY node: {node.node_id} ({node.name}) - will retry (age: {age:.1f}s)")
                         # Folytatjuk, hozzáadjuk a listához
                     else:
                         # Ha túl régen volt aktív, kihagyjuk
@@ -176,14 +177,19 @@ class DistributedComputingNetwork:
                 elif node.status == NodeStatus.ONLINE:
                     # ONLINE node-okat csak akkor használjuk, ha elérhető
                     if not node.is_available():
+                        logger.debug(f"⏭️ Skipping ONLINE node: {node.node_id} (not available)")
                         continue
                 # OFFLINE node-okat csak akkor használjuk, ha nem régen volt aktív
                 elif node.status == NodeStatus.OFFLINE:
                     age = (datetime.now() - node.last_seen).total_seconds()
-                    if age >= 600:  # 10 perc
+                    if age >= 900:  # 15 perc
+                        logger.debug(f"⏭️ Skipping OFFLINE node: {node.node_id} (too old: {age:.1f}s)")
                         continue
+                    else:
+                        logger.info(f"🔄 Including OFFLINE node: {node.node_id} ({node.name}) - will try (age: {age:.1f}s)")
                 else:
                     # Ismeretlen státusz, kihagyjuk
+                    logger.debug(f"⏭️ Skipping node with unknown status: {node.node_id} (status: {node.status})")
                     continue
             
             # Ha szerver node, akkor csak az ONLINE státuszt ellenőrizzük
@@ -234,7 +240,14 @@ class DistributedComputingNetwork:
         # ignore_model_filter=True: minden modell használja az összes beregisztrált erőforrást
         available_nodes = self.get_available_nodes(model=model, ignore_model_filter=True)
         
-        if not available_nodes:
+        # Logolás: mely node-ok vannak elérhető
+        if available_nodes:
+            node_list = [f"{n.node_id} ({n.name}) [{n.status.value}]" for n in available_nodes]
+            logger.info(f"📋 Available nodes for task: {node_list}")
+        else:
+            # Ha nincs elérhető node, logoljuk az összes regisztrált node-ot
+            all_nodes = [f"{n.node_id} ({n.name}) [{n.status.value}]" for n in self.nodes.values()]
+            logger.warning(f"⚠️ No available nodes! All registered nodes: {all_nodes}")
             task.status = "failed"
             raise Exception("No available compute nodes")
         
