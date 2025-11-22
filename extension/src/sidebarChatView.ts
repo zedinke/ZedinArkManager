@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as os from 'os';
 import { ZedinArkAPI } from './api';
 import { LocalOllamaAPI } from './localOllamaAPI';
 
@@ -56,6 +57,9 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
         if (isAvailable) {
             this.useLocalOllama = true;
             console.log('Local Ollama API available');
+            
+            // Automatikus regisztráció a distributed network-be
+            await this.registerLocalNode();
         } else {
             console.warn('Local Ollama not available');
             this.useLocalOllama = false;
@@ -65,6 +69,61 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             console.log('Parallel mode enabled: using both resources simultaneously for each request');
         } else if (this.useHybridMode && this.useLocalOllama) {
             console.log('Hybrid mode enabled: load balancing between local GPU and remote server');
+        }
+    }
+    
+    /**
+     * Helyi gép regisztrálása a distributed network-be
+     */
+    private async registerLocalNode() {
+        try {
+            if (!this.localOllama) {
+                return;
+            }
+            
+            const config = vscode.workspace.getConfiguration('zedinark');
+            const localOllamaUrl = config.get<string>('localOllamaUrl', 'http://localhost:11434');
+            
+            // Modellek lekérése
+            const models = await this.localOllama.listModels();
+            
+            // Gépadatok gyűjtése
+            const hostname = os.hostname();
+            const platform = os.platform();
+            const arch = os.arch();
+            const cpus = os.cpus();
+            const cpuCores = cpus.length;
+            
+            // GPU detektálás (Windows: nvidia-smi, ha elérhető)
+            let gpuCount = 0;
+            let gpuMemory = 0;
+            try {
+                // Próbáljuk meg detektálni a GPU-t (Windows-on nvidia-smi)
+                // Ez csak akkor működik, ha a PATH-ban van az nvidia-smi
+                // TODO: jobb GPU detektálás implementálása
+            } catch (e) {
+                // GPU detektálás nem sikerült, marad 0
+            }
+            
+            // Node ID generálása
+            const nodeId = `user-${hostname}-${platform}`;
+            const nodeName = `${hostname} (${platform} ${arch})`;
+            
+            // Regisztrálás
+            await this.api.registerComputeNode(
+                nodeId,
+                'user',
+                nodeName,
+                localOllamaUrl,
+                gpuCount,
+                gpuMemory,
+                cpuCores
+            );
+            
+            console.log(`Local compute node registered: ${nodeId} (${cpuCores} CPU cores, ${gpuCount} GPU)`);
+        } catch (error: any) {
+            console.error('Failed to register local node:', error);
+            // Ne jelenítsünk hibát, mert ez opcionális funkció
         }
     }
 
@@ -145,9 +204,9 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 // Ha nincs modell, töröljük a 'default' értéket
                 this.currentModel = '';
             }
-            
+
             if (this._view) {
-                this._view.webview.postMessage({
+            this._view.webview.postMessage({
                     command: 'modelsLoaded',
                     models: allModels,
                     currentModel: this.currentModel
@@ -158,11 +217,11 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             this.availableModels = [];
             this.currentModel = '';
             if (this._view) {
-                this._view.webview.postMessage({
-                    command: 'error',
+            this._view.webview.postMessage({
+                command: 'error',
                     error: 'Nem sikerült betölteni a modelleket: ' + error.message
-                });
-                this._view.webview.postMessage({
+            });
+            this._view.webview.postMessage({
                     command: 'modelsLoaded',
                     models: [],
                     currentModel: ''
@@ -234,10 +293,11 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                         response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
                         console.log('Response from remote server (fallback)');
                     }
-                } else {
-                    // Távoli API használata
+                    } else {
+                    // Távoli API használata - MINDIG distributed computing-et használ, ha elérhető
+                    // A szerver automatikusan elosztja a kérést minden elérhető csomópontra (beleértve a szerver node-ot is)
                     response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
-                    console.log('Response from remote server');
+                    console.log('Response from remote server (distributed computing)');
                 }
             }
 
@@ -442,9 +502,9 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 view.webview.postMessage({
                     command: 'todoList',
                     todos: todos
-                });
-            }
+            });
         }
+    }
 
         // Code snippets kinyerése
         const codeBlocks = response.match(/```(\w+)?\n?([\s\S]*?)```/g);
@@ -474,8 +534,8 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                     view.webview.postMessage({
                         command: 'feedback',
                         type: type,
-                        content: content
-                    });
+                content: content
+            });
                 }
             });
         }
@@ -865,7 +925,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             <button id="refreshBtn" class="control-btn" type="button" title="Modellek frissítése">🔄</button>
             <button id="clearBtn" class="control-btn" type="button" title="Chat törlése">🗑️</button>
         </div>
-    </div>
+        </div>
     <div class="messages" id="messages"></div>
     <div class="input-area">
         <div class="input-wrapper">
@@ -875,7 +935,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
     </div>
     <script>
         (function() {
-            const vscode = acquireVsCodeApi();
+        const vscode = acquireVsCodeApi();
             const messages = document.getElementById('messages');
             const input = document.getElementById('messageInput');
             const sendBtn = document.getElementById('sendButton');
@@ -884,12 +944,12 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             const refreshBtn = document.getElementById('refreshBtn');
             let currentModel = 'default';
 
-            function escapeHtml(text) {
+        function escapeHtml(text) {
                 if (!text) return '';
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
             function formatMarkdown(text) {
                 text = escapeHtml(text);
@@ -911,16 +971,16 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 // Ellenőrizzük, hogy van-e modell kiválasztva
                 if (!currentModel || currentModel === '') {
                     addFeedback('Kérlek válassz egy modellt a legördülő menüből, mielőtt üzenetet küldenél.', 'warning');
-                    return;
-                }
-                
-                addMessage('user', text);
+                return;
+            }
+
+            addMessage('user', text);
                 input.value = '';
                 sendBtn.disabled = true;
-                
-                vscode.postMessage({ 
-                    command: 'sendMessage', 
-                    text: text,
+
+            vscode.postMessage({
+                command: 'sendMessage',
+                text: text,
                     model: currentModel
                 });
             }

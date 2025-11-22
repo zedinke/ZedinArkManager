@@ -350,14 +350,16 @@ A kódot mindig ``` nyelv formátumban add vissza."""
         if use_distributed_computing:
             try:
                 # Distributed hálózat használata - minden elérhető csomóponton párhuzamosan
+                # Ez BELEÉRTI a szerver node-ot is, így a szerver erőforrásai is használódnak
                 user_id = api_key or "anonymous"
+                logger.info(f"🚀 Using distributed computing with {len(available_nodes)} nodes: {[n.node_id for n in available_nodes]}")
                 response = await distributed_network.distribute_task(
                     user_id=user_id,
                     model=request.model or DEFAULT_MODEL,
                     messages=messages,
-                    use_all_nodes=True  # Minden elérhető csomópontot használ
+                    use_all_nodes=True  # Minden elérhető csomópontot használ (szerver + felhasználói gépek)
                 )
-                logger.info(f"Distributed computing: {len(available_nodes)} nodes used")
+                logger.info(f"✅ Distributed computing completed: {len(available_nodes)} nodes used")
             except Exception as e:
                 logger.warning(f"Distributed computing failed, falling back to local: {e}")
                 # Fallback lokális LLM service-re
