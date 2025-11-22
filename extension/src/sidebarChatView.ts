@@ -1069,9 +1069,33 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
             console.log('✅ Event listeners attached successfully');
         }
 
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatMarkdown(text) {
+            text = escapeHtml(text);
+            const backtick = String.fromCharCode(96);
+            text = text.replace(new RegExp(backtick + backtick + backtick + '(\\w+)?\\n?([\\s\\S]*?)' + backtick + backtick + backtick, 'g'), '<pre><code>$2</code></pre>');
+            text = text.replace(new RegExp(backtick + '([^' + backtick + ']+)' + backtick, 'g'), '<code>$1</code>');
+            text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            text = text.replace(/\n/g, '<br>');
+            return text;
+        }
+
+        function getPriorityLabel(priority) {
+            const labels = { high: '🔴 Magas', medium: '🟡 Közepes', low: '🟢 Alacsony' };
+            return labels[priority] || '';
+        }
+
         function sendMessage() {
+            console.log('📤 sendMessage called');
             if (!messageInput || !sendButton) {
-                console.error('❌ Elements not available in sendMessage');
+                console.error('❌ Elements not available in sendMessage', { messageInput: !!messageInput, sendButton: !!sendButton });
                 return;
             }
 
@@ -1082,18 +1106,23 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
             }
 
             console.log('📤 Sending message:', text.substring(0, 50));
-            addMessage('user', text);
-            messageInput.value = '';
-            messageInput.style.height = '60px';
-            sendButton.disabled = true;
+            try {
+                addMessage('user', text);
+                messageInput.value = '';
+                messageInput.style.height = '60px';
+                sendButton.disabled = true;
 
-            vscode.postMessage({
-                command: 'sendMessage',
-                text: text,
-                mode: currentMode
-            });
+                console.log('📨 Posting message to vscode:', { command: 'sendMessage', text: text.substring(0, 50), mode: currentMode });
+                vscode.postMessage({
+                    command: 'sendMessage',
+                    text: text,
+                    mode: currentMode
+                });
+                console.log('✅ Message posted successfully');
+            } catch (error) {
+                console.error('❌ Error in sendMessage:', error);
+            }
         }
-
 
         function addMessage(role, content, metadata) {
             if (!messagesDiv) {
@@ -1206,27 +1235,6 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        function formatMarkdown(text) {
-            text = escapeHtml(text);
-            const backtick = String.fromCharCode(96);
-            text = text.replace(new RegExp(backtick + backtick + backtick + '(\\w+)?\\n?([\\s\\S]*?)' + backtick + backtick + backtick, 'g'), '<pre><code>$2</code></pre>');
-            text = text.replace(new RegExp(backtick + '([^' + backtick + ']+)' + backtick, 'g'), '<code>$1</code>');
-            text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-            text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
-            text = text.replace(/\n/g, '<br>');
-            return text;
-        }
-
-        function getPriorityLabel(priority) {
-            const labels = { high: '🔴 Magas', medium: '🟡 Közepes', low: '🟢 Alacsony' };
-            return labels[priority] || '';
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
 
         window.addEventListener('message', event => {
             const message = event.data;
