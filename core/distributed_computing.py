@@ -84,6 +84,8 @@ class DistributedComputingNetwork:
         self.lock = asyncio.Lock()
         # Connection pool optimalizáció: újrahasznosított HTTP session-ök
         self._session_pool: Optional[aiohttp.ClientSession] = None
+        # Round-robin load balancing: következő node index
+        self._load_balance_index = 0
     
     def register_node(self, node_id: str, user_id: str, name: str, 
                      ollama_url: str, api_key: Optional[str] = None,
@@ -251,15 +253,18 @@ class DistributedComputingNetwork:
             task.status = "failed"
             raise Exception("No available compute nodes")
         
-        # Terheléselosztás: 50-50% (véletlenszerűen választ egy node-ot)
+        # Terheléselosztás: 50-50% (round-robin: felváltva választ)
         if load_balance and len(available_nodes) >= 2:
-            # Rendezés előtt véletlenszerűen választunk (hogy ne legyen előny a rendezés miatt)
-            # Shuffle-oljuk a listát, hogy a véletlenszerű választás igazán véletlenszerű legyen
-            random.shuffle(available_nodes)
-            # Véletlenszerűen választunk egy node-ot (50% esély mindkettőre)
-            selected_node = random.choice(available_nodes)
+            # Round-robin: felváltva választunk (50-50% garantált)
+            # Ez jobb, mint a véletlenszerű, mert garantálja a 50-50% elosztást
+            selected_index = self._load_balance_index % len(available_nodes)
+            selected_node = available_nodes[selected_index]
+            self._load_balance_index += 1
             available_nodes = [selected_node]
-            logger.info(f"⚖️ Load balancing: Selected node {selected_node.node_id} ({selected_node.name}) from {len(available_nodes)} available nodes (50% chance for each)")
+            
+            # Logolás: mely node-ok voltak elérhetők
+            all_node_ids = [n.node_id for n in available_nodes]
+            logger.info(f"⚖️ Load balancing (round-robin): Selected node {selected_node.node_id} ({selected_node.name}) - index {selected_index}/{len(available_nodes)-1} from {len(all_node_ids)} available nodes")
         elif not use_all_nodes:
             # Ha use_all_nodes=False, csak a legjobb csomópontot használjuk
             available_nodes = available_nodes[:1]
