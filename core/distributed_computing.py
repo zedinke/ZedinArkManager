@@ -163,7 +163,8 @@ class DistributedComputingNetwork:
         self.tasks[task_id] = task
         
         # Elérhető csomópontok keresése
-        available_nodes = self.get_available_nodes(model=model)
+        # ignore_model_filter=True: minden modell használja az összes beregisztrált erőforrást
+        available_nodes = self.get_available_nodes(model=model, ignore_model_filter=True)
         
         if not available_nodes:
             task.status = "failed"
