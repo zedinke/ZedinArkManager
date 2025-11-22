@@ -980,11 +980,23 @@ if __name__ == "__main__":
     # Kikapcsolás: python main.py --no-reload
     # Vagy környezeti változóval: export RELOAD=false
     use_reload = os.getenv("RELOAD", "false").lower() == "true" and "--no-reload" not in sys.argv
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=use_reload,
-        reload_excludes=["*.pyc", "__pycache__", "*.log", "data/*", "logs/*", "projects/*", ".git/*"]
-    )
+    
+    # Uvicorn konfiguráció reload warning elkerülésére
+    if use_reload:
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=8000,
+            reload=use_reload,
+            reload_excludes=["*.pyc", "__pycache__", "*.log", "data/*", "logs/*", "projects/*", ".git/*"],
+            reload_includes=["*.py"]  # Csak Python fájlok figyelése
+        )
+    else:
+        # Production mód: reload nélkül, warning nélkül
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=8000,
+            reload=False
+        )
 
