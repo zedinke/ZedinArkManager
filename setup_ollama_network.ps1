@@ -30,14 +30,30 @@ Write-Host "🔥 Tűzfalszabály hozzáadása (11434 port)..." -ForegroundColor 
 try {
     $existingRule = Get-NetFirewallRule -DisplayName "Ollama" -ErrorAction SilentlyContinue
     if ($existingRule) {
-        Write-Host "ℹ️  Tűzfalszabály már létezik, frissítés..." -ForegroundColor Yellow
-        Remove-NetFirewallRule -DisplayName "Ollama" -ErrorAction SilentlyContinue
+        Write-Host "ℹ️  Tűzfalszabály már létezik, ellenőrzés..." -ForegroundColor Yellow
+        $portFilter = Get-NetFirewallRule -DisplayName "Ollama" | Get-NetFirewallPortFilter -ErrorAction SilentlyContinue
+        if ($portFilter -and $portFilter.LocalPort -eq 11434) {
+            Write-Host "✅ Tűzfalszabály már létezik és helyes (11434 port)" -ForegroundColor Green
+        } else {
+            Write-Host "⚠️  Tűzfalszabály létezik, de más porttal. Újra létrehozás..." -ForegroundColor Yellow
+            Remove-NetFirewallRule -DisplayName "Ollama" -ErrorAction SilentlyContinue
+            New-NetFirewallRule -DisplayName "Ollama" -Direction Inbound -LocalPort 11434 -Protocol TCP -Action Allow -Profile Domain,Private,Public | Out-Null
+            Write-Host "✅ Tűzfalszabály frissítve" -ForegroundColor Green
+        }
+    } else {
+        New-NetFirewallRule -DisplayName "Ollama" -Direction Inbound -LocalPort 11434 -Protocol TCP -Action Allow -Profile Domain,Private,Public | Out-Null
+        Write-Host "✅ Tűzfalszabály hozzáadva (11434 port, minden profil)" -ForegroundColor Green
     }
-    New-NetFirewallRule -DisplayName "Ollama" -Direction Inbound -LocalPort 11434 -Protocol TCP -Action Allow | Out-Null
-    Write-Host "✅ Tűzfalszabály hozzáadva" -ForegroundColor Green
 } catch {
-    Write-Host "⚠️  Tűzfalszabály hozzáadása sikertelen: $_" -ForegroundColor Yellow
-    Write-Host "   Próbáld meg manuálisan a Windows Tűzfal beállításokban" -ForegroundColor Yellow
+    Write-Host "❌ Tűzfalszabály hozzáadása sikertelen: $_" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "📖 MANUÁLIS BEÁLLÍTÁS:" -ForegroundColor Yellow
+    Write-Host "   1. Nyisd meg: wf.msc" -ForegroundColor White
+    Write-Host "   2. Bejövő szabályok → Új szabály..." -ForegroundColor White
+    Write-Host "   3. Port → TCP → 11434 → Engedélyezés" -ForegroundColor White
+    Write-Host "   4. Minden profil (Tartomány, Magán, Nyilvános)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "   Vagy lásd: WINDOWS_FIREWALL_SETUP.md" -ForegroundColor Cyan
 }
 
 Write-Host ""
