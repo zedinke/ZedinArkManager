@@ -194,6 +194,7 @@ class ChatRequest(BaseModel):
     temperature: float = Field(0.5, ge=0.0, le=2.0, description="Kreativitás")
     auto_save_code: bool = Field(True, description="Automatikus kód mentés")
     use_cache: bool = Field(True, description="Cache használata")
+    workspace_path: Optional[str] = Field(None, description="Workspace útvonal (kliens oldali)")
 
 
 class GenerateCodeRequest(BaseModel):
@@ -319,6 +320,20 @@ async def list_models(api_key: Optional[str] = Security(verify_api_key)):
 async def chat(request: ChatRequest, api_key: Optional[str] = Security(verify_api_key)):
     """Chat endpoint"""
     try:
+        # Workspace útvonal beállítása (ha meg van adva)
+        current_base_path = BASE_PATH
+        if request.workspace_path:
+            # A kliens workspace útvonalát használjuk
+            current_base_path = request.workspace_path
+            logger.info(f"Workspace útvonal használata: {current_base_path}")
+            # Dinamikus file_manager és action_executor létrehozása workspace útvonallal
+            workspace_file_manager = FileManager(base_path=current_base_path)
+            workspace_action_executor = ActionExecutor(file_manager=workspace_file_manager, base_path=current_base_path)
+        else:
+            # Alapértelmezett file_manager és action_executor
+            workspace_file_manager = file_manager
+            workspace_action_executor = action_executor
+        
         messages = [
             {"role": msg.role, "content": msg.content}
             for msg in request.messages
@@ -399,7 +414,8 @@ RUN_COMMAND: python test.py"""
         last_user_message = messages[-1]["content"] if messages and messages[-1].get("role") == "user" else ""
         
         # Végrehajtás teljes jogosultságokkal - ne írjon kódot, csak hajtsa végre
-        execution_result = action_executor.execute_actions_from_response(
+        # Workspace útvonallal rendelkező action_executor használata
+        execution_result = workspace_action_executor.execute_actions_from_response(
             ai_response=response,
             user_message=last_user_message
         )

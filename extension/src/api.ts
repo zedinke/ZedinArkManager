@@ -139,11 +139,12 @@ export class ZedinArkAPI {
         }
     }
 
-    async chatWithHistory(messages: Array<{role: string, content: string}>, model?: string): Promise<string> {
+    async chatWithHistory(messages: Array<{role: string, content: string}>, model?: string, workspacePath?: string): Promise<string> {
         try {
             const response = await this.client.post('/api/chat', {
                 messages: messages,
-                model: model
+                model: model,
+                workspace_path: workspacePath
             }, {
                 timeout: 300000, // 5 perc timeout (nagy modellek esetén)
                 responseType: 'json'

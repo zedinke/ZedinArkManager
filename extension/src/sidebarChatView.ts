@@ -495,7 +495,13 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             // Távoli API használata - MINDIG distributed computing-et használ, ha elérhető
             // A szerver automatikusan elosztja a kérést minden elérhető csomópontra párhuzamosan
             // (szerver node + regisztrált kliens node-ok)
-            response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
+            // Workspace útvonal lekérése
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            const workspacePath = workspaceFolders && workspaceFolders.length > 0 
+                ? workspaceFolders[0].uri.fsPath 
+                : undefined;
+            
+            response = await this.api.chatWithHistory(this.conversationHistory, selectedModel, workspacePath);
             console.log('✅ Response from distributed computing (server + local GPU in parallel)');
 
             // Hozzáadjuk az AI válaszát a történethez
@@ -531,8 +537,14 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
         
         // Párhuzamos kérések indítása
         const [localResponse, remoteResponse] = await Promise.allSettled([
+            // Workspace útvonal lekérése
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            const workspacePath = workspaceFolders && workspaceFolders.length > 0 
+                ? workspaceFolders[0].uri.fsPath 
+                : undefined;
+            
             this.localOllama!.chatWithHistory(this.conversationHistory, model),
-            this.api.chatWithHistory(this.conversationHistory, model)
+            this.api.chatWithHistory(this.conversationHistory, model, workspacePath)
         ]);
         
         const localSuccess = localResponse.status === 'fulfilled';
