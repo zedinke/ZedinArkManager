@@ -255,23 +255,24 @@ class DistributedComputingNetwork:
                 logger.debug(f"📡 Sending async HTTP request to {url} for node {node.node_id}")
                 logger.debug(f"   Node GPU info: {node.gpu_count} GPU(s), {node.gpu_memory} MB memory")
                 
-                async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=300)) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        result = data.get("message", {}).get("content", "") or data.get("response", "")
-                        
-                        # Válaszidő mérése
-                        response_time = (datetime.now() - start_time).total_seconds() * 1000
-                        logger.info(f"✅ Node {node.node_id} completed in {response_time:.2f}ms, response length: {len(result)} chars")
-                        if node.gpu_count > 0:
-                            logger.info(f"   💻 GPU used: {node.gpu_count} GPU(s), {node.gpu_memory} MB")
-                        self.update_node_status(node.node_id, NodeStatus.ONLINE, 
-                                               response_time=response_time)
-                        
-                        return result
-                    else:
-                        error_text = await response.text()
-                        raise Exception(f"Ollama API error: {response.status} - {error_text}")
+                try:
+                    async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            result = data.get("message", {}).get("content", "") or data.get("response", "")
+                            
+                            # Válaszidő mérése
+                            response_time = (datetime.now() - start_time).total_seconds() * 1000
+                            logger.info(f"✅ Node {node.node_id} completed in {response_time:.2f}ms, response length: {len(result)} chars")
+                            if node.gpu_count > 0:
+                                logger.info(f"   💻 GPU used: {node.gpu_count} GPU(s), {node.gpu_memory} MB")
+                            self.update_node_status(node.node_id, NodeStatus.ONLINE, 
+                                                   response_time=response_time)
+                            
+                            return result
+                        else:
+                            error_text = await response.text()
+                            raise Exception(f"Ollama API error: {response.status} - {error_text}")
                 except asyncio.TimeoutError:
                     logger.error(f"❌ Node {node.node_id} timeout: Could not reach {url} within 300 seconds")
                     self.update_node_status(node.node_id, NodeStatus.ERROR)
