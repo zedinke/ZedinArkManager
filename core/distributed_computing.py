@@ -112,15 +112,24 @@ class DistributedComputingNetwork:
                 node.response_time = response_time
     
     def get_available_nodes(self, model: Optional[str] = None, 
-                          min_gpu_memory: int = 0) -> List[ComputeNode]:
-        """Elérhető csomópontok lekérése"""
+                          min_gpu_memory: int = 0,
+                          ignore_model_filter: bool = False) -> List[ComputeNode]:
+        """
+        Elérhető csomópontok lekérése
+        
+        Args:
+            model: Modell neve (opcionális szűréshez)
+            min_gpu_memory: Minimális GPU memória (MB)
+            ignore_model_filter: Ha True, minden elérhető csomópontot visszaad, függetlenül a modelltől
+        """
         available = []
         for node in self.nodes.values():
             if not node.is_available():
                 continue
             if min_gpu_memory > 0 and node.gpu_memory < min_gpu_memory:
                 continue
-            if model and model not in node.available_models:
+            # Modell szűrés csak akkor, ha ignore_model_filter=False
+            if not ignore_model_filter and model and model not in node.available_models:
                 continue
             available.append(node)
         

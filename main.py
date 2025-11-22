@@ -297,7 +297,11 @@ A kódot mindig ``` nyelv formátumban add vissza."""
         
         # Distributed computing használata, ha be van kapcsolva és van elérhető csomópont
         # Alapértelmezetten be van kapcsolva, ha van elérhető csomópont
-        available_nodes = distributed_network.get_available_nodes(model=request.model)
+        # ignore_model_filter=True: minden modell használja az összes beregisztrált erőforrást
+        available_nodes = distributed_network.get_available_nodes(
+            model=request.model,
+            ignore_model_filter=True  # Minden csomópontot használ, függetlenül a modelltől
+        )
         use_distributed_computing = len(available_nodes) > 0
         
         # Logolás: mely csomópontok lesznek használva
