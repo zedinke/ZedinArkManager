@@ -864,12 +864,15 @@ async def register_compute_node(
         )
         
         # Modellek lekérése (ha elérhető)
+        # FONTOS: Ne blokkoljuk a regisztrációt, ha a modellek nem elérhetőek
+        # A node regisztrálva marad, és később próbálhatjuk meg újra betölteni a modelleket
         try:
             import requests
             if ollama_url:
                 # Ha localhost, ne próbáljuk meg elérni (nem fog működni)
                 if "localhost" not in ollama_url and "127.0.0.1" not in ollama_url:
-                    response = requests.get(f"{ollama_url}/api/tags", timeout=5)
+                    # Növeljük a timeout-ot távoli node-okhoz (pl. 10 másodperc)
+                    response = requests.get(f"{ollama_url}/api/tags", timeout=10)
                     if response.status_code == 200:
                         data = response.json()
                         models = [m["name"] for m in data.get("models", [])]
@@ -881,10 +884,28 @@ async def register_compute_node(
                         logger.info(f"✅ Node {node.node_id} models loaded: {len(models)} models")
                     else:
                         logger.warning(f"⚠️ Could not load models from {ollama_url}: HTTP {response.status_code}")
+                        # Node regisztrálva marad, de modellek nélkül (később újra próbálhatjuk)
+                        distributed_network.update_node_status(
+                            node_id=node.node_id,
+                            status=NodeStatus.ONLINE,
+                            available_models=[]  # Üres lista, de online marad
+                        )
                 else:
                     logger.warning(f"⚠️ Cannot verify models for localhost node {node.node_id}. Client should provide accessible URL.")
+                    # Node regisztrálva marad, de modellek nélkül
+                    distributed_network.update_node_status(
+                        node_id=node.node_id,
+                        status=NodeStatus.ONLINE,
+                        available_models=[]  # Üres lista, de online marad
+                    )
         except Exception as e:
             logger.warning(f"⚠️ Could not load models for node {node.node_id}: {e}")
+            # Node regisztrálva marad, de modellek nélkül (később újra próbálhatjuk)
+            distributed_network.update_node_status(
+                node_id=node.node_id,
+                status=NodeStatus.ONLINE,
+                available_models=[]  # Üres lista, de online marad
+            )
         
         logger.info(f"✅ Compute node registered: {node.node_id} ({request.get('name')}) from {ollama_url}")
         return {

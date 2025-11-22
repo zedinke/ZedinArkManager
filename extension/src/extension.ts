@@ -83,10 +83,11 @@ export function activate(context: vscode.ExtensionContext) {
     
     api = new ZedinArkAPI(apiUrl, apiKey);
     
-    // Helyi gép regisztrálása (ha be van kapcsolva a local Ollama)
-    registerLocalNode(api).catch(err => {
-        console.error('Error registering local node:', err);
-    });
+    // Helyi gép regisztrálása - NEM itt, hanem a sidebarChatView.ts-ben történik
+    // (hogy elkerüljük a dupla regisztrációt)
+    // registerLocalNode(api).catch(err => {
+    //     console.error('Error registering local node:', err);
+    // });
 
     // Sidebar chat view - regisztrálás azonnal
     console.log('Registering sidebar view provider...');

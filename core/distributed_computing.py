@@ -124,8 +124,17 @@ class DistributedComputingNetwork:
         """
         available = []
         for node in self.nodes.values():
-            if not node.is_available():
+            # Ellenőrizzük az elérhetőséget (de a szerver node-ot mindig használjuk, ha online)
+            is_server_node = node.node_id.startswith('server-')
+            
+            # Ha nem szerver node és nem elérhető, kihagyjuk
+            if not is_server_node and not node.is_available():
                 continue
+            
+            # Ha szerver node, akkor csak az ONLINE státuszt ellenőrizzük
+            if is_server_node and node.status != NodeStatus.ONLINE:
+                continue
+                
             if min_gpu_memory > 0 and node.gpu_memory < min_gpu_memory:
                 continue
             # Modell szűrés csak akkor, ha ignore_model_filter=False
@@ -263,6 +272,14 @@ class DistributedComputingNetwork:
                     else:
                         error_text = await response.text()
                         raise Exception(f"Ollama API error: {response.status} - {error_text}")
+                except asyncio.TimeoutError:
+                    logger.error(f"❌ Node {node.node_id} timeout: Could not reach {url} within 300 seconds")
+                    self.update_node_status(node.node_id, NodeStatus.ERROR)
+                    raise Exception(f"Node {node.node_id} timeout: Could not reach Ollama at {url}")
+                except aiohttp.ClientError as e:
+                    logger.error(f"❌ Node {node.node_id} connection error: {e}")
+                    self.update_node_status(node.node_id, NodeStatus.ERROR)
+                    raise Exception(f"Node {node.node_id} connection error: {e}")
         
         except Exception as e:
             logger.error(f"❌ Node {node.node_id} error: {e}")
