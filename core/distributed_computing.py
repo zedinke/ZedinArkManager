@@ -148,7 +148,8 @@ class DistributedComputingNetwork:
     
     async def distribute_task(self, user_id: str, model: str, 
                              messages: List[Dict[str, str]],
-                             use_all_nodes: bool = True) -> str:
+                             use_all_nodes: bool = True,
+                             load_balance: bool = True) -> str:
         """
         Feladat elosztása minden elérhető csomópontra
         
@@ -157,9 +158,10 @@ class DistributedComputingNetwork:
             model: Modell neve
             messages: Chat üzenetek
             use_all_nodes: Ha True, minden elérhető csomópontot használ
+            load_balance: Ha True, 50-50% terheléselosztás (egy node-ot választ véletlenszerűen)
         
         Returns:
-            Kombinált válasz
+            Kombinált válasz vagy egy node válasza
         """
         task_id = str(uuid.uuid4())
         task = DistributedTask(
@@ -179,8 +181,15 @@ class DistributedComputingNetwork:
             task.status = "failed"
             raise Exception("No available compute nodes")
         
-        # Ha use_all_nodes=False, csak a legjobb csomópontot használjuk
-        if not use_all_nodes:
+        # Terheléselosztás: 50-50% (véletlenszerűen választ egy node-ot)
+        if load_balance and len(available_nodes) >= 2:
+            import random
+            # Véletlenszerűen választunk egy node-ot (50% esély mindkettőre)
+            selected_node = random.choice(available_nodes)
+            available_nodes = [selected_node]
+            logger.info(f"⚖️ Load balancing: Selected node {selected_node.node_id} (50% chance for each node)")
+        elif not use_all_nodes:
+            # Ha use_all_nodes=False, csak a legjobb csomópontot használjuk
             available_nodes = available_nodes[:1]
         
         logger.info(f"Distributing task {task_id} to {len(available_nodes)} nodes: {[n.node_id for n in available_nodes]}")
