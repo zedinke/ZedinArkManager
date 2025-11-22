@@ -22,10 +22,6 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
         context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ) {
-        console.log('SidebarChatViewProvider.resolveWebviewView called!');
-        console.log('WebviewView:', webviewView);
-        console.log('View ID:', SidebarChatViewProvider.viewType);
-        
         this._view = webviewView;
 
         webviewView.webview.options = {
@@ -44,15 +40,6 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                     this.currentMode = message.mode;
                     this.updateMode();
                     break;
-                case 'uploadFile':
-                    await this.handleFileUpload(message.fileData, message.fileName);
-                    break;
-                case 'uploadImage':
-                    await this.handleImageUpload(message.imageData, message.imageName);
-                    break;
-                case 'readFile':
-                    await this.handleReadFile(message.filePath);
-                    break;
                 case 'checkForUpdates':
                     await vscode.commands.executeCommand('zedinark.update');
                     break;
@@ -64,11 +51,8 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
         if (!this._view) return;
 
         this.currentMode = mode as 'agent' | 'ask' | 'edit';
-        
-        // Üzenet hozzáadása a történethez
         this.conversationHistory.push({ role: 'user', content: text });
 
-        // Agent személyiség system prompt
         const systemPrompt = this.getSystemPrompt();
 
         try {
@@ -80,13 +64,10 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             let response: string;
 
             if (this.currentMode === 'agent') {
-                // Agent mód: autonóm műveletek
                 response = await this.handleAgentMode(text, systemPrompt);
             } else if (this.currentMode === 'edit') {
-                // Edit mód: fájl szerkesztés
                 response = await this.handleEditMode(text, systemPrompt);
             } else {
-                // Ask mód: egyszerű válasz
                 response = await this.handleAskMode(text, systemPrompt);
             }
 
@@ -118,15 +99,8 @@ Működési módod: ${this.currentMode}
 Képességeid:
 - Teljes hozzáférésed van a projekt mappához
 - Fájlokat létrehozhatsz, módosíthatsz, törölhetsz
-- Képeket és fájlokat értelmezhetsz
 - Autonóm döntéseket hozhatsz
-- Kódot generálhatsz és refaktorálhatsz
-
-Működési stílusod:
-- Elemezd a feladatot alaposan
-- Gondold végig a legjobb megoldást
-- Végezd el a szükséges műveleteket
-- Jelentsd vissza, mit csináltál és miért`;
+- Kódot generálhatsz és refaktorálhatsz`;
 
         if (this.currentMode === 'agent') {
             return basePrompt + `
@@ -153,14 +127,10 @@ MODIFY_FILE: relatív/útvonal/fájl.ext
 3. FÁJL TÖRLÉSE:
 DELETE_FILE: relatív/útvonal/fájl.ext
 
-4. MAPPA LÉTREHOZÁSA (automatikusan történik, ha szükséges):
-A CREATE_FILE automatikusan létrehozza a szükséges mappákat.
-
 FONTOS:
 - MINDIG használd ezt a formátumot fájl műveletekhez!
 - A fájl útvonalak relatívak a workspace gyökeréhez!
-- Ha módosítasz egy fájlt, adj vissza a TELJES új tartalmat!
-- Jelentsd vissza, mit csináltál és miért`;
+- Ha módosítasz egy fájlt, adj vissza a TELJES új tartalmat!`;
         } else if (this.currentMode === 'edit') {
             return basePrompt + `
 EDIT MÓD: Fájlok szerkesztése.
@@ -178,15 +148,12 @@ ASK MÓD: Kérdés-válasz mód.
     }
 
     private async handleAgentMode(text: string, systemPrompt: string): Promise<string> {
-        // Agent mód: teljes autonómia
-        // Először próbáljuk a workspace folder-t
         let workspacePath: string | undefined;
         let workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         
         if (workspaceFolder) {
             workspacePath = workspaceFolder.uri.fsPath;
         } else {
-            // Ha nincs workspace folder, próbáljuk az aktív fájl mappáját
             const activeEditor = vscode.window.activeTextEditor;
             if (activeEditor) {
                 const activeFile = activeEditor.document.uri;
@@ -196,25 +163,12 @@ ASK MÓD: Kérdés-válasz mód.
             }
         }
 
-        // Ha még mindig nincs, próbáljuk a megnyitott fájlokat
-        if (!workspacePath) {
-            const documents = vscode.workspace.textDocuments;
-            if (documents.length > 0) {
-                const firstDoc = documents[0].uri;
-                if (firstDoc.scheme === 'file') {
-                    workspacePath = path.dirname(firstDoc.fsPath);
-                }
-            }
-        }
-
         if (!workspacePath) {
             throw new Error('Nincs workspace mappa megnyitva! Kérlek, nyisd meg a projekt mappát VS Code-ban: File → Open Folder...');
         }
 
-        // Projekt struktúra lekérése
         const projectStructure = await this.getProjectStructure(workspacePath);
 
-        // Agent prompt - explicit CREATE_FILE formátum példával
         const agentPrompt = `${systemPrompt}
 
 PROJEKT INFORMÁCIÓ:
@@ -237,122 +191,63 @@ CREATE_FILE: fájl_neve.txt
 Hello
 \`\`\`
 
-Példa a test.txt fájl létrehozásához "Hello" tartalommal:
-
-CREATE_FILE: test.txt
-\`\`\`
-Hello
-\`\`\`
-
-VAGY Python fájl esetén:
-
-CREATE_FILE: main.py
-\`\`\`python
-print("Hello World")
-\`\`\`
-
-FONTOS:
-- NE használj bash parancsokat (echo, >, stb.)
-- NE írj magyarázatot
-- KÖZVETLENÜL írd ki a CREATE_FILE formátumot a válaszod elején
-- A CREATE_FILE után KÖVETKEZIK a kód blokk
-
 VÉGEZD EL A FELADATOT A FENTI FORMÁTUMBAN!`;
 
-        console.log('🤖 Agent prompt sent, workspace:', workspacePath);
         const response = await this.api.chat(agentPrompt);
-        console.log('📥 Agent response received, length:', response.length);
-        console.log('📄 Response preview:', response.substring(0, 500));
-        
-        // Agent válaszban lehetnek fájl műveletek
         await this.executeAgentActions(response, workspacePath);
-
         return response;
     }
 
     private async executeAgentActions(response: string, workspacePath: string) {
-        // Agent válaszban keresünk fájl műveleteket
         let actionsPerformed = false;
         
-        console.log('🔍 Executing agent actions...');
-        console.log('📁 Workspace path:', workspacePath);
-        console.log('📝 Response length:', response.length);
-        
         try {
-            // CREATE_FILE: path/to/file.py
-            // ```ext
-            // content
-            // ```
-            // Több verziót is támogatunk a regex-ben (rugalmasabb)
             const createFilePatterns = [
                 /CREATE_FILE:\s*([^\n`]+)\s*\n\s*```(\w+)?\s*\n([\s\S]*?)```/g,
                 /CREATE_FILE:\s*([^\n`]+)\s*\n\s*```\s*\n([\s\S]*?)```/g,
-                /CREATE_FILE[:\s]+([^\n`]+)\s*\n\s*```(\w+)?\s*\n([\s\S]*?)```/g,
-                /CREATE_FILE[:\s]+([^\n`]+)\s*\r?\n\s*```(\w+)?\s*\r?\n([\s\S]*?)```/g
             ];
             
             for (const regex of createFilePatterns) {
                 let match;
-                regex.lastIndex = 0; // Reset regex
+                regex.lastIndex = 0;
                 
                 while ((match = regex.exec(response)) !== null) {
-                    console.log('📄 Found CREATE_FILE match:', match[0].substring(0, 100));
-                    
                     let filePath: string;
                     let actualContent: string;
                     
-                    // Parse match array based on pattern
                     if (match.length === 4) {
-                        // Pattern with language: match[1] = path, match[2] = lang, match[3] = content
                         filePath = match[1].trim();
                         actualContent = match[3].trim();
                     } else if (match.length === 3) {
-                        // Pattern without language: match[1] = path, match[2] = content
                         filePath = match[1].trim();
                         actualContent = match[2].trim();
                     } else {
-                        console.warn('⚠️ Unexpected match format:', match.length);
                         continue;
                     }
                     
-                    if (!filePath || !actualContent) {
-                        console.warn('⚠️ Missing filePath or content:', { filePath, contentLength: actualContent?.length });
-                        continue;
-                    }
+                    if (!filePath || !actualContent) continue;
                     
-                    // Normalizáljuk az útvonalat
                     const normalizedPath = filePath.replace(/^\.\//, '').replace(/^\//, '');
                     const fullPath = path.join(workspacePath, normalizedPath);
-                    
-                    console.log('📝 Creating file:');
-                    console.log('  - Path:', normalizedPath);
-                    console.log('  - Full path:', fullPath);
-                    console.log('  - Content length:', actualContent.length);
                     
                     try {
                         await this.createFile(fullPath, actualContent);
                         actionsPerformed = true;
                         
-                        // Visszajelzés a felhasználónak
                         this._view?.webview.postMessage({
                             command: 'fileCreated',
                             filePath: normalizedPath
                         });
                         
                         vscode.window.showInformationMessage(`✅ Fájl létrehozva: ${normalizedPath}`);
-                        console.log(`✅ File created successfully: ${normalizedPath}`);
                     } catch (error: any) {
-                        const errorMsg = `❌ Error creating file ${normalizedPath}: ${error.message}`;
-                        console.error(errorMsg, error);
-                        vscode.window.showErrorMessage(errorMsg);
+                        vscode.window.showErrorMessage(`❌ Hiba: ${error.message}`);
                     }
                 }
             }
 
-            // DELETE_FILE: path/to/file.py
             const deleteFilePatterns = [
                 /DELETE_FILE:\s*([^\n`]+)/g,
-                /DELETE_FILE[:\s]+([^\n`]+)/g
             ];
             
             for (const regex of deleteFilePatterns) {
@@ -367,27 +262,15 @@ VÉGEZD EL A FELADATOT A FENTI FORMÁTUMBAN!`;
                     try {
                         await this.deleteFile(fullPath);
                         actionsPerformed = true;
-                        
-                        this._view?.webview.postMessage({
-                            command: 'fileDeleted',
-                            filePath: normalizedPath
-                        });
-                        
-                        console.log(`✅ File deleted: ${normalizedPath}`);
+                        vscode.window.showInformationMessage(`✅ Fájl törölve: ${normalizedPath}`);
                     } catch (error: any) {
-                        console.error(`❌ Error deleting file ${normalizedPath}:`, error);
+                        vscode.window.showErrorMessage(`❌ Hiba: ${error.message}`);
                     }
                 }
             }
 
-            // MODIFY_FILE: path/to/file.py
-            // ```ext
-            // new content
-            // ```
             const modifyFilePatterns = [
                 /MODIFY_FILE:\s*([^\n`]+)\s*\n\s*```(\w+)?\s*\n([\s\S]*?)```/g,
-                /MODIFY_FILE:\s*([^\n`]+)\s*\n\s*```\s*\n([\s\S]*?)```/g,
-                /MODIFY_FILE[:\s]+([^\n`]+)\s*\n\s*```(\w+)?\s*\n([\s\S]*?)```/g
             ];
             
             for (const regex of modifyFilePatterns) {
@@ -401,24 +284,16 @@ VÉGEZD EL A FELADATOT A FENTI FORMÁTUMBAN!`;
                     const fullPath = path.join(workspacePath, normalizedPath);
                     
                     try {
-                        // MODIFY_FILE is CREATE_FILE (overwrite)
                         await this.createFile(fullPath, content);
                         actionsPerformed = true;
-                        
-                        this._view?.webview.postMessage({
-                            command: 'fileModified',
-                            filePath: normalizedPath
-                        });
-                        
-                        console.log(`✅ File modified: ${normalizedPath}`);
+                        vscode.window.showInformationMessage(`✅ Fájl módosítva: ${normalizedPath}`);
                     } catch (error: any) {
-                        console.error(`❌ Error modifying file ${normalizedPath}:`, error);
+                        vscode.window.showErrorMessage(`❌ Hiba: ${error.message}`);
                     }
                 }
             }
             
             if (actionsPerformed) {
-                // Visszajelzés a felhasználónak
                 vscode.window.showInformationMessage('Agent fájl műveletek végrehajtva!');
             }
         } catch (error: any) {
@@ -428,7 +303,6 @@ VÉGEZD EL A FELADATOT A FENTI FORMÁTUMBAN!`;
     }
 
     private async handleEditMode(text: string, systemPrompt: string): Promise<string> {
-        // Edit mód: fájl szerkesztés
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
             throw new Error('No active editor. Please open a file to edit.');
@@ -456,7 +330,6 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
 
         const response = await this.api.chat(editPrompt);
         
-        // Kód kinyerése és fájl módosítása
         const codeMatch = response.match(/```[\w]*\n([\s\S]*?)```/);
         if (codeMatch) {
             const newContent = codeMatch[1].trim();
@@ -468,7 +341,6 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
                 editBuilder.replace(fullRange, newContent);
             });
             
-            // Fájl mentése
             await editor.document.save();
             
             return `✅ Fájl módosítva: ${path.basename(filePath)}\n\n${response}`;
@@ -478,135 +350,20 @@ Módosítsd a fájlt a kérés szerint. Visszaadott formátum:
     }
 
     private async handleAskMode(text: string, systemPrompt: string): Promise<string> {
-        // Ask mód: egyszerű válasz
         const messages = [
             { role: 'system', content: systemPrompt },
-            ...this.conversationHistory.slice(-5), // Utolsó 5 üzenet
+            ...this.conversationHistory.slice(-5),
             { role: 'user', content: text }
         ];
 
         return await this.api.chatWithHistory(messages);
     }
 
-    private async handleFileUpload(fileData: string, fileName: string) {
-        if (!this._view) return;
-
-        try {
-            // Fájl olvasása és értelmezése
-            const content = Buffer.from(fileData, 'base64').toString('utf-8');
-            
-            // Fájl hozzáadása a chathez
-            this._view.webview.postMessage({
-                command: 'fileAttached',
-                fileName: fileName,
-                fileSize: content.length
-            });
-            
-            const prompt = `Olvasd el és értelmezd ezt a fájlt: ${fileName}
-
-Tartalom:
-\`\`\`
-${content.substring(0, 10000)}${content.length > 10000 ? '\n... (fájl csonkolva)' : ''}
-\`\`\`
-
-Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
-            
-            const response = await this.api.chat(prompt);
-            
-            this._view.webview.postMessage({
-                command: 'fileInterpreted',
-                fileName: fileName,
-                interpretation: response
-            });
-        } catch (error: any) {
-            this._view.webview.postMessage({
-                command: 'error',
-                error: `Fájl feldolgozási hiba: ${error.message}`
-            });
-        }
-    }
-
-    private async handleImageUpload(imageData: string, imageName: string) {
-        if (!this._view) return;
-
-        try {
-            // Kép feltöltése és értelmezése (base64)
-            this._view.webview.postMessage({
-                command: 'imageAttached',
-                imageName: imageName
-            });
-            
-            const prompt = `Elemezd ezt a képet: ${imageName}
-Írd le, mit látsz a képen, és adj releváns információkat.`;
-            
-            // Vision API hívás (ha van vision model)
-            const response = await this.api.analyzeImage(imageData, prompt);
-            
-            this._view.webview.postMessage({
-                command: 'imageInterpreted',
-                imageName: imageName,
-                interpretation: response
-            });
-        } catch (error: any) {
-            // Ha nincs vision model, egyszerű válasz
-            this._view.webview.postMessage({
-                command: 'imageInterpreted',
-                imageName: imageName,
-                interpretation: `Kép feltöltve: ${imageName}\n\n(Vision model még nincs implementálva a backend-en)`
-            });
-        }
-    }
-
-    private async handleReadFile(filePath: string) {
-        if (!this._view) return;
-
-        // Ugyanaz a logika, mint handleAgentMode-ban
-        let workspacePath: string | undefined;
-        let workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        
-        if (workspaceFolder) {
-            workspacePath = workspaceFolder.uri.fsPath;
-        } else {
-            const activeEditor = vscode.window.activeTextEditor;
-            if (activeEditor) {
-                const activeFile = activeEditor.document.uri;
-                if (activeFile.scheme === 'file') {
-                    workspacePath = path.dirname(activeFile.fsPath);
-                }
-            }
-        }
-
-        if (!workspacePath) {
-            this._view.webview.postMessage({
-                command: 'error',
-                error: 'Nincs workspace mappa megnyitva!'
-            });
-            return;
-        }
-
-        const fullPath = path.join(workspacePath, filePath);
-        
-        try {
-            const content = fs.readFileSync(fullPath, 'utf-8');
-            this._view.webview.postMessage({
-                command: 'fileRead',
-                filePath: filePath,
-                content: content
-            });
-        } catch (error: any) {
-            this._view.webview.postMessage({
-                command: 'error',
-                error: `Nem lehet olvasni a fájlt: ${error.message}`
-            });
-        }
-    }
-
     private async getProjectStructure(workspacePath: string): Promise<any> {
-        // Projekt struktúra lekérése
         const structure: any = { files: [], directories: [] };
         
         const walkDir = (dir: string, depth: number = 0) => {
-            if (depth > 3) return; // Max 3 szint
+            if (depth > 3) return;
             
             try {
                 const items = fs.readdirSync(dir);
@@ -614,7 +371,6 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                     const fullPath = path.join(dir, item);
                     const relPath = path.relative(workspacePath, fullPath);
                     
-                    // Ignore patterns
                     if (item.startsWith('.') || 
                         item === 'node_modules' || 
                         item === '__pycache__' ||
@@ -657,11 +413,9 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
 
     private async deleteFile(filePath: string) {
         try {
-            // Normalizáljuk az útvonalat
             const normalizedPath = path.normalize(filePath);
             
             if (fs.existsSync(normalizedPath)) {
-                // Ha a fájl meg van nyitva VS Code-ban, zárjuk be
                 const uri = vscode.Uri.file(normalizedPath);
                 const openEditors = vscode.window.visibleTextEditors;
                 for (const editor of openEditors) {
@@ -671,18 +425,14 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                     }
                 }
                 
-                // Fájl törlése
                 fs.unlinkSync(normalizedPath);
-                console.log(`🗑️ File deleted: ${normalizedPath}`);
                 
-                // Próbáljuk meg törölni az üres mappákat is (max 5 szint)
                 let currentDir = path.dirname(normalizedPath);
                 for (let i = 0; i < 5; i++) {
                     try {
                         const files = fs.readdirSync(currentDir);
                         if (files.length === 0) {
                             fs.rmdirSync(currentDir);
-                            console.log(`📁 Empty directory deleted: ${currentDir}`);
                             currentDir = path.dirname(currentDir);
                         } else {
                             break;
@@ -693,7 +443,6 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                 }
             }
         } catch (error: any) {
-            console.error(`Error deleting file ${filePath}:`, error);
             throw new Error(`Nem lehet törölni a fájlt: ${error.message}`);
         }
     }
@@ -706,7 +455,6 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
     }
 
     private _getHtmlForWebview(webview: vscode.Webview): string {
-        // Modern, letisztult design HTML
         return `<!DOCTYPE html>
 <html lang="hu">
 <head>
@@ -758,9 +506,6 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             border-radius: 3px;
             cursor: pointer;
             font-size: 11px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
         }
 
         .update-btn:hover {
@@ -782,7 +527,6 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             cursor: pointer;
             border-radius: 4px;
             font-size: 12px;
-            transition: all 0.2s;
             font-weight: 500;
         }
 
@@ -794,32 +538,6 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
 
         .mode-btn:hover {
             opacity: 0.9;
-        }
-
-        .upload-buttons {
-            display: flex;
-            gap: 4px;
-            margin-top: 8px;
-        }
-
-        .upload-btn {
-            flex: 1;
-            padding: 6px;
-            border: 1px solid var(--vscode-input-border);
-            background: var(--vscode-input-background);
-            color: var(--vscode-foreground);
-            cursor: pointer;
-            border-radius: 4px;
-            font-size: 11px;
-            transition: background 0.2s;
-        }
-
-        .upload-btn:hover {
-            background: var(--vscode-list-hoverBackground);
-        }
-
-        #fileInput, #imageInput {
-            display: none;
         }
 
         .messages-container {
@@ -836,18 +554,6 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             display: flex;
             flex-direction: column;
             gap: 4px;
-            animation: fadeIn 0.3s ease-in;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
         }
 
         .message.user {
@@ -879,7 +585,6 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             border-bottom-left-radius: 4px;
         }
 
-        /* Code blocks - max 10 lines, then scrollable */
         .message-content pre {
             background: var(--vscode-textCodeBlock-background);
             border: 1px solid var(--vscode-panel-border);
@@ -887,11 +592,8 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             padding: 12px;
             margin: 8px 0;
             overflow-x: auto;
-            max-height: calc(1.5em * 10 + 24px); /* Exactly 10 lines (line-height: 1.5 * 10 + padding) */
+            max-height: calc(1.5em * 10 + 24px);
             overflow-y: auto;
-            position: relative;
-            font-size: 13px;
-            line-height: 1.5;
         }
 
         .message-content pre code {
@@ -901,9 +603,6 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             color: var(--vscode-textCodeBlock-foreground, var(--vscode-foreground));
             display: block;
             white-space: pre;
-            padding: 0;
-            background: transparent;
-            margin: 0;
         }
 
         .message-content code:not(pre code) {
@@ -912,34 +611,6 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             border-radius: 3px;
             font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
             font-size: 0.9em;
-            color: var(--vscode-textCodeBlock-foreground, var(--vscode-foreground));
-        }
-
-        /* Scrollbar styling for code blocks */
-        .message-content pre::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-
-        .message-content pre::-webkit-scrollbar-track {
-            background: var(--vscode-scrollbarSlider-background, transparent);
-            border-radius: 4px;
-        }
-
-        .message-content pre::-webkit-scrollbar-thumb {
-            background: var(--vscode-scrollbarSlider-hoverBackground, var(--vscode-descriptionForeground));
-            border-radius: 4px;
-        }
-
-        .message-content pre::-webkit-scrollbar-thumb:hover {
-            background: var(--vscode-scrollbarSlider-activeBackground, var(--vscode-foreground));
-        }
-
-        .message-role {
-            font-size: 11px;
-            opacity: 0.7;
-            font-weight: 500;
-            padding: 0 4px;
         }
 
         .input-container {
@@ -980,7 +651,6 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             cursor: pointer;
             font-size: 13px;
             font-weight: 500;
-            transition: opacity 0.2s;
         }
 
         .send-button:hover:not(:disabled) {
@@ -1025,53 +695,19 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                 opacity: 1;
             }
         }
-
-        .attached-file {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 10px;
-            background: var(--vscode-textBlockQuote-background);
-            border-radius: 6px;
-            font-size: 11px;
-            margin-top: 4px;
-            max-width: 85%;
-        }
-
-        .attached-file-icon {
-            width: 16px;
-            height: 16px;
-        }
-
-        .file-action-notification {
-            padding: 8px 12px;
-            background: var(--vscode-textBlockQuote-background);
-            border-radius: 6px;
-            font-size: 11px;
-            color: var(--vscode-descriptionForeground);
-            margin-top: 4px;
-        }
     </style>
 </head>
 <body>
     <div class="header">
         <div class="header-top">
             <div class="header-title">ZEDINARK AI</div>
-            <button type="button" class="update-btn" id="updateButton" title="Frissítés ellenőrzése">
-                🔄 Update
-            </button>
+            <button type="button" class="update-btn" id="updateButton">🔄 Update</button>
         </div>
         <div class="mode-selector">
             <button type="button" class="mode-btn active" data-mode="agent">🤖 Agent</button>
             <button type="button" class="mode-btn" data-mode="ask">💬 Ask</button>
             <button type="button" class="mode-btn" data-mode="edit">✏️ Edit</button>
         </div>
-        <div class="upload-buttons">
-            <button type="button" class="upload-btn" id="fileUploadButton">📄 Fájl</button>
-            <button type="button" class="upload-btn" id="imageUploadButton">🖼️ Kép</button>
-        </div>
-        <input type="file" id="fileInput" accept="*/*">
-        <input type="file" id="imageInput" accept="image/*">
     </div>
 
     <div class="messages-container" id="messages"></div>
@@ -1082,466 +718,126 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
     </div>
 
     <script>
-        const vscode = acquireVsCodeApi();
-        let messagesDiv, messageInput, sendButton, updateButton;
-        let fileUploadButton, imageUploadButton, fileInput, imageInput;
-        let currentMode = 'ask';
-        let attachedFiles = [];
-        let initialized = false;
-        let eventListenersAttached = false;
-
-        // Initialize when DOM is ready
-        function initialize() {
-            console.log('🔧 Initializing...');
+        (function() {
+            const vscode = acquireVsCodeApi();
+            const messagesDiv = document.getElementById('messages');
+            const messageInput = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
+            const updateButton = document.getElementById('updateButton');
+            const modeButtons = document.querySelectorAll('.mode-btn');
             
-            // Get elements (always refresh to ensure they're available)
-            messagesDiv = document.getElementById('messages');
-            messageInput = document.getElementById('messageInput');
-            sendButton = document.getElementById('sendButton');
-            updateButton = document.getElementById('updateButton');
-            fileUploadButton = document.getElementById('fileUploadButton');
-            imageUploadButton = document.getElementById('imageUploadButton');
-            fileInput = document.getElementById('fileInput');
-            imageInput = document.getElementById('imageInput');
-
-            console.log('📦 Elements:', {
-                messagesDiv: !!messagesDiv,
-                messageInput: !!messageInput,
-                sendButton: !!sendButton,
-                updateButton: !!updateButton,
-                fileUploadButton: !!fileUploadButton,
-                imageUploadButton: !!imageUploadButton,
-                fileInput: !!fileInput,
-                imageInput: !!imageInput
-            });
-            
-            // Check if all critical elements are available
-            if (!messageInput || !sendButton || !messagesDiv) {
-                console.warn('⚠️ Critical elements not found, will retry...');
-                initialized = false; // Reset flag so we can retry
-                return;
-            }
-            
-            // Prevent duplicate event listeners - check if already attached
-            if (eventListenersAttached) {
-                console.log('⚠️ Event listeners already attached, skipping...');
-                initialized = true;
-                return;
-            }
+            let currentMode = 'ask';
 
             // Update button
-            if (updateButton) {
-                updateButton.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('🔄 Update button clicked');
-                    vscode.postMessage({ command: 'checkForUpdates' });
-                });
-            } else {
-                console.error('❌ Update button not found');
-            }
+            updateButton.addEventListener('click', () => {
+                vscode.postMessage({ command: 'checkForUpdates' });
+            });
 
-            // File upload button
-            if (fileUploadButton && fileInput) {
-                fileUploadButton.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('📄 File upload button clicked');
-                    fileInput.click();
-                });
-            } else {
-                console.error('❌ File upload button or input not found');
-            }
-
-            // Image upload button
-            if (imageUploadButton && imageInput) {
-                imageUploadButton.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('🖼️ Image upload button clicked');
-                    imageInput.click();
-                });
-            } else {
-                console.error('❌ Image upload button or input not found');
-            }
-
-            // Mode selector
-            const modeButtons = document.querySelectorAll('.mode-btn');
-            console.log('🔄 Mode buttons found:', modeButtons.length);
+            // Mode buttons
             modeButtons.forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+                btn.addEventListener('click', () => {
+                    modeButtons.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     currentMode = btn.dataset.mode;
-                    console.log('🔄 Mode changed to:', currentMode);
                     vscode.postMessage({ command: 'switchMode', mode: currentMode });
-                    
-                    // Mode change notification
-                    const modeText = currentMode === 'agent' ? 'Agent (autonóm)' : currentMode === 'edit' ? 'Edit (szerkesztés)' : 'Ask (kérdés-válasz)';
-                    addSystemMessage('Mód váltva: ' + modeText);
                 });
             });
 
-            // File upload
-            if (fileInput) {
-                fileInput.addEventListener('change', async (e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                            const base64 = event.target.result.split(',')[1];
-                            attachedFiles.push({ name: file.name, type: 'file' });
-                            vscode.postMessage({
-                                command: 'uploadFile',
-                                fileData: base64,
-                                fileName: file.name
-                            });
-                            addSystemMessage('📄 Fájl feltöltve: ' + file.name);
-                        };
-                        reader.readAsDataURL(file);
-                    }
-                });
-            }
+            // Send button
+            sendButton.addEventListener('click', sendMessage);
 
-            // Image upload
-            if (imageInput) {
-                imageInput.addEventListener('change', async (e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                            const base64 = event.target.result.split(',')[1];
-                            attachedFiles.push({ name: file.name, type: 'image' });
-                            vscode.postMessage({
-                                command: 'uploadImage',
-                                imageData: base64,
-                                imageName: file.name
-                            });
-                            addSystemMessage('🖼️ Kép feltöltve: ' + file.name);
-                        };
-                        reader.readAsDataURL(file);
-                    }
-                });
-            }
-
-            // Send button event listener
-            if (sendButton) {
-                // Remove existing listeners first to avoid duplicates
-                const newSendButton = sendButton.cloneNode(true);
-                sendButton.parentNode.replaceChild(newSendButton, sendButton);
-                sendButton = newSendButton;
-                
-                sendButton.addEventListener('click', (e) => {
+            // Enter key
+            messageInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    e.stopPropagation();
-                    console.log('🖱️ Send button clicked');
-                    if (typeof sendMessage === 'function') {
-                        sendMessage();
-                    } else {
-                        console.error('❌ sendMessage function not available');
-                    }
-                });
-                console.log('✅ Send button event listener attached');
-            } else {
-                console.error('❌ Send button not found');
-            }
-
-            // Enter key event listener
-            if (messageInput) {
-                // Remove existing listeners first to avoid duplicates
-                const newMessageInput = messageInput.cloneNode(true);
-                messageInput.parentNode.replaceChild(newMessageInput, messageInput);
-                messageInput = newMessageInput;
-                
-                messageInput.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        console.log('⌨️ Enter pressed');
-                        if (typeof sendMessage === 'function') {
-                            sendMessage();
-                        } else {
-                            console.error('❌ sendMessage function not available');
-                        }
-                    }
-                });
-                
-                // Auto-resize textarea
-                messageInput.addEventListener('input', () => {
-                    messageInput.style.height = '60px';
-                    messageInput.style.height = Math.min(messageInput.scrollHeight, 200) + 'px';
-                });
-                console.log('✅ Message input event listeners attached');
-            } else {
-                console.error('❌ Message input not found');
-                return; // Don't mark as initialized if critical elements are missing
-            }
-
-            // Mark as initialized only if all event listeners were attached
-            eventListenersAttached = true;
-            initialized = true;
-            console.log('✅ Initialization complete - all event listeners attached');
-            
-            // Test: Verify elements are accessible
-            if (sendButton) {
-                console.log('✅ Send button is ready:', sendButton);
-            }
-            if (messageInput) {
-                console.log('✅ Message input is ready:', messageInput);
-            }
-        }
-
-        function addSystemMessage(text) {
-            if (!messagesDiv) {
-                messagesDiv = document.getElementById('messages');
-                if (!messagesDiv) {
-                    console.error('❌ Messages container not found');
-                    return;
+                    sendMessage();
                 }
-            }
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message assistant';
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            contentDiv.style.fontSize = '11px';
-            contentDiv.style.opacity = '0.7';
-            contentDiv.textContent = text;
-            messageDiv.appendChild(contentDiv);
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-
-
-        function addMessage(role, content) {
-            if (!messagesDiv) {
-                messagesDiv = document.getElementById('messages');
-                if (!messagesDiv) {
-                    console.error('❌ Messages container not found');
-                    return;
-                }
-            }
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message ' + role;
-            
-            const roleDiv = document.createElement('div');
-            roleDiv.className = 'message-role';
-            roleDiv.textContent = role === 'user' ? 'Te' : 'ZedinArk AI';
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            
-            // Markdown-like formatting
-            content = escapeHtml(content);
-            
-            // Code blocks first - escape backticks to avoid template string issues
-            const backtick = String.fromCharCode(96);
-            const codeBlockPattern = backtick + backtick + backtick + '(\\w+)?\\n?([\\s\\S]*?)' + backtick + backtick + backtick;
-            const codeBlockRegex = new RegExp(codeBlockPattern, 'g');
-            content = content.replace(codeBlockRegex, function(match, lang, code) {
-                const cleanCode = code.trim();
-                return '<pre><code>' + cleanCode + '</code></pre>';
             });
-            
-            // Then inline code (single backticks, but not inside code blocks)
-            const inlineCodePattern = backtick + '([^' + backtick + '\\n]+)' + backtick;
-            const inlineCodeRegex = new RegExp(inlineCodePattern, 'g');
-            content = content.replace(inlineCodeRegex, '<code>$1</code>');
-            
-            // Finally, replace newlines (but not inside code blocks)
-            // Split by code blocks, replace newlines in text parts only
-            const codeBlockSplitter = /(<pre><code>[\s\S]*?<\/code><\/pre>)/g;
-            const parts = content.split(codeBlockSplitter);
-            content = parts.map(function(part) {
-                if (part.match(/^<pre><code>[\s\S]*?<\/code><\/pre>$/)) {
-                    // This is a code block, keep as is
-                    return part;
-                } else {
-                    // This is text, replace newlines
-                    return part.replace(/\n/g, '<br>');
-                }
-            }).join('');
-            
-            contentDiv.innerHTML = content;
-            
-            messageDiv.appendChild(roleDiv);
-            messageDiv.appendChild(contentDiv);
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
+            // Auto-resize textarea
+            messageInput.addEventListener('input', () => {
+                messageInput.style.height = '60px';
+                messageInput.style.height = Math.min(messageInput.scrollHeight, 200) + 'px';
+            });
 
-        function sendMessage() {
-            console.log('📤 sendMessage called');
-            
-            // Try to get elements again if they're not available
-            if (!messageInput) {
-                messageInput = document.getElementById('messageInput');
-                console.log('🔄 Retrying to get messageInput:', messageInput);
-            }
-            
-            if (!messageInput) {
-                console.error('❌ messageInput not found, initializing...');
-                tryInitialize();
-                return;
-            }
-            
-            const text = messageInput.value.trim();
-            console.log('📝 Text:', text);
-            if (!text) {
-                console.log('⚠️ Empty text, returning');
-                return;
-            }
+            function sendMessage() {
+                const text = messageInput.value.trim();
+                if (!text) return;
 
-            console.log('✅ Sending message, mode:', currentMode);
-            addMessage('user', text);
-            messageInput.value = '';
-            
-            if (!sendButton) {
-                sendButton = document.getElementById('sendButton');
-            }
-            
-            if (sendButton) {
+                addMessage('user', text);
+                messageInput.value = '';
+                messageInput.style.height = '60px';
                 sendButton.disabled = true;
-            }
-            
-            messageInput.style.height = '60px';
 
-            vscode.postMessage({
-                command: 'sendMessage',
-                text: text,
-                mode: currentMode
-            });
-        }
-        
-        // Make sendMessage globally available for debugging
-        window.sendMessage = sendMessage;
-        
-        // Initialize when DOM is ready
-        function tryInitialize() {
-            console.log('🔄 Trying to initialize...');
-            try {
-                initialize();
-                // If initialization didn't complete (elements not found), retry
-                if (!initialized) {
-                    console.log('⏳ Initialization incomplete, will retry...');
-                    setTimeout(tryInitialize, 200);
-                }
-            } catch (error) {
-                console.error('❌ Initialization error:', error);
-                // Retry after a delay
-                setTimeout(tryInitialize, 200);
-            }
-        }
-        
-        window.tryInitialize = tryInitialize;
-        
-        console.log('🚀 Script loaded, readyState:', document.readyState);
-        
-        // Try immediately if DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', tryInitialize);
-        } else {
-            tryInitialize();
-        }
-        
-        // Also try after short delays (webview might need more time)
-        setTimeout(tryInitialize, 100);
-        setTimeout(tryInitialize, 300);
-        setTimeout(tryInitialize, 500);
-        
-        // Also try when window loads
-        window.addEventListener('load', tryInitialize);
-        
-        // Use MutationObserver to watch for when elements become available
-        const observer = new MutationObserver(() => {
-            if (!initialized) {
-                console.log('👀 DOM changed, trying to initialize...');
-                tryInitialize();
-            }
-        });
-        
-        // Start observing the document body for changes
-        if (document.body) {
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true
-            });
-        } else {
-            // If body doesn't exist yet, wait for it
-            document.addEventListener('DOMContentLoaded', () => {
-                observer.observe(document.body, {
-                    childList: true,
-                    subtree: true
+                vscode.postMessage({
+                    command: 'sendMessage',
+                    text: text,
+                    mode: currentMode
                 });
-            });
-        }
+            }
 
-        window.addEventListener('message', event => {
-            const message = event.data;
-            
-            // Ensure elements are available
-            if (!sendButton) {
-                sendButton = document.getElementById('sendButton');
+            function addMessage(role, content) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message ' + role;
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                
+                // Simple markdown-like formatting
+                content = escapeHtml(content);
+                const backtick = String.fromCharCode(96);
+                const codeBlockPattern = backtick + backtick + backtick + '([\\s\\S]*?)' + backtick + backtick + backtick;
+                content = content.replace(new RegExp(codeBlockPattern, 'g'), '<pre><code>$1</code></pre>');
+                const inlineCodePattern = backtick + '([^' + backtick + ']+)' + backtick;
+                content = content.replace(new RegExp(inlineCodePattern, 'g'), '<code>$1</code>');
+                content = content.replace(/\\n/g, '<br>');
+                
+                contentDiv.innerHTML = content;
+                messageDiv.appendChild(contentDiv);
+                messagesDiv.appendChild(messageDiv);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
-            if (!messageInput) {
-                messageInput = document.getElementById('messageInput');
+
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
             }
-            if (!messagesDiv) {
-                messagesDiv = document.getElementById('messages');
-            }
-            
-            switch (message.command) {
-                case 'receiveMessage':
-                    addMessage('assistant', message.response);
-                    if (sendButton) sendButton.disabled = false;
-                    if (messageInput) messageInput.focus();
-                    break;
-                case 'error':
-                    addMessage('assistant', '❌ Hiba: ' + message.error);
-                    if (sendButton) sendButton.disabled = false;
-                    if (messageInput) messageInput.focus();
-                    break;
-                case 'loading':
-                    if (!messagesDiv) return;
-                    if (message.loading) {
-                        const loadingDiv = document.createElement('div');
-                        loadingDiv.className = 'loading';
-                        loadingDiv.id = 'loading';
-                        loadingDiv.innerHTML = '<div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span>AI gondolkodik...</span>';
-                        messagesDiv.appendChild(loadingDiv);
-                        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                    } else {
-                        const loading = document.getElementById('loading');
-                        if (loading) loading.remove();
-                    }
-                    break;
-                case 'fileCreated':
-                    addSystemMessage('✅ Fájl létrehozva: ' + message.filePath);
-                    break;
-                case 'fileDeleted':
-                    addSystemMessage('🗑️ Fájl törölve: ' + message.filePath);
-                    break;
-                case 'fileModified':
-                    addSystemMessage('✏️ Fájl módosítva: ' + message.filePath);
-                    break;
-                case 'fileInterpreted':
-                    addMessage('assistant', '📄 Fájl elemzés: ' + message.fileName + '\\n\\n' + message.interpretation);
-                    break;
-                case 'imageInterpreted':
-                    addMessage('assistant', '🖼️ Kép elemzés: ' + message.imageName + '\\n\\n' + message.interpretation);
-                    break;
-            }
-        });
+
+            window.addEventListener('message', event => {
+                const message = event.data;
+                switch (message.command) {
+                    case 'receiveMessage':
+                        addMessage('assistant', message.response);
+                        sendButton.disabled = false;
+                        messageInput.focus();
+                        break;
+                    case 'error':
+                        addMessage('assistant', '❌ Hiba: ' + message.error);
+                        sendButton.disabled = false;
+                        messageInput.focus();
+                        break;
+                    case 'loading':
+                        if (message.loading) {
+                            const loadingDiv = document.createElement('div');
+                            loadingDiv.className = 'loading';
+                            loadingDiv.id = 'loading';
+                            loadingDiv.innerHTML = '<div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span>AI gondolkodik...</span>';
+                            messagesDiv.appendChild(loadingDiv);
+                            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                        } else {
+                            const loading = document.getElementById('loading');
+                            if (loading) loading.remove();
+                        }
+                        break;
+                    case 'fileCreated':
+                        addMessage('assistant', '✅ Fájl létrehozva: ' + message.filePath);
+                        break;
+                }
+            });
+        })();
     </script>
 </body>
 </html>`;
     }
 }
-
