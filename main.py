@@ -10,6 +10,7 @@ from typing import List, Optional, Dict, Any
 import uvicorn
 import os
 import logging
+import re
 from pathlib import Path
 
 from core.llm_service import LLMService
