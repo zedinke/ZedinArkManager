@@ -111,35 +111,30 @@ class ActionExecutor:
         actions = []
         
         # CREATE_FILE pattern - rugalmasabb minta
-        create_patterns = [
-            r"CREATE_FILE:\s*([^\n]+)\s*\n```(\w+)?\s*(.*?)```",  # CREATE_FILE: fájlnév\n```nyelv\nkód\n```
-            r"CREATE_FILE:\s*([^\n]+)",  # CREATE_FILE: fájlnév (kód blokk nélkül)
-        ]
+        # Keresünk CREATE_FILE: fájlnév mintákat
+        create_file_matches = list(re.finditer(r"CREATE_FILE:\s*([^\n]+)", text, re.IGNORECASE))
         
-        for create_pattern in create_patterns:
-            for match in re.finditer(create_pattern, text, re.DOTALL):
-                file_path = match.group(1).strip()
-                if len(match.groups()) >= 3:
-                    language = match.group(2).strip() if match.group(2) else "text"
-                    content = match.group(3).strip()
-                else:
-                    # Ha nincs kód blokk, keressük meg a következő kód blokkot
-                    remaining_text = text[match.end():]
-                    code_blocks = self._extract_code_blocks(remaining_text)
-                    if code_blocks:
-                        content = code_blocks[0][0]
-                        language = code_blocks[0][1]
-                    else:
-                        content = ""
-                        language = "text"
-                
-                actions.append({
-                    "type": "CREATE_FILE",
-                    "file_path": file_path,
-                    "content": content,
-                    "language": language
-                })
-                break  # Csak az első egyezést használjuk
+        for create_match in create_file_matches:
+            file_path = create_match.group(1).strip()
+            # Keresünk kód blokkot a CREATE_FILE után
+            remaining_text = text[create_match.end():]
+            # Keresünk a következő ``` mintát
+            code_block_match = re.search(r"```(\w+)?\s*\n(.*?)```", remaining_text, re.DOTALL)
+            
+            if code_block_match:
+                language = code_block_match.group(1).strip() if code_block_match.group(1) else "text"
+                content = code_block_match.group(2).strip()
+            else:
+                # Ha nincs kód blokk, üres fájl
+                content = ""
+                language = "text"
+            
+            actions.append({
+                "type": "CREATE_FILE",
+                "file_path": file_path,
+                "content": content,
+                "language": language
+            })
         
         # MODIFY_FILE pattern
         modify_pattern = r"MODIFY_FILE:\s*([^\n]+)\s*\n```(\w+)?\s*(.*?)```"
