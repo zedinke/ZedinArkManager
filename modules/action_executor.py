@@ -48,20 +48,17 @@ class ActionExecutor:
             "response_text": ""
         }
         
-        # 1. Kód blokkok kinyerése és végrehajtása
-        code_blocks = self._extract_code_blocks(ai_response)
-        for code, language in code_blocks:
-            action_result = self._execute_code_block(code, language, user_message)
-            if action_result:
-                results["actions_executed"].append(action_result)
-                if action_result.get("file_created"):
-                    results["files_created"].append(action_result["file_created"])
-                if action_result.get("file_modified"):
-                    results["files_modified"].append(action_result["file_modified"])
-                if action_result.get("error"):
-                    results["errors"].append(action_result["error"])
+        # 0. Intelligens fájl létrehozás a felhasználó üzenetéből (ha az AI nem használta a formátumot)
+        if user_message:
+            file_creation_result = self._try_intelligent_file_creation(user_message, ai_response)
+            if file_creation_result:
+                results["actions_executed"].append(file_creation_result)
+                if file_creation_result.get("file_created"):
+                    results["files_created"].append(file_creation_result["file_created"])
+                if file_creation_result.get("error"):
+                    results["errors"].append(file_creation_result["error"])
         
-        # 2. Explicit parancsok keresése (CREATE_FILE, MODIFY_FILE, DELETE_FILE, RUN_COMMAND)
+        # 1. Explicit parancsok keresése (CREATE_FILE, MODIFY_FILE, DELETE_FILE, RUN_COMMAND)
         explicit_actions = self._extract_explicit_actions(ai_response)
         for action in explicit_actions:
             action_result = self._execute_explicit_action(action)
@@ -77,6 +74,20 @@ class ActionExecutor:
                     results["commands_run"].append(action_result["command_run"])
                 if action_result.get("error"):
                     results["errors"].append(action_result["error"])
+        
+        # 2. Kód blokkok kinyerése és végrehajtása (ha nincs explicit parancs)
+        if not explicit_actions:
+            code_blocks = self._extract_code_blocks(ai_response)
+            for code, language in code_blocks:
+                action_result = self._execute_code_block(code, language, user_message)
+                if action_result:
+                    results["actions_executed"].append(action_result)
+                    if action_result.get("file_created"):
+                        results["files_created"].append(action_result["file_created"])
+                    if action_result.get("file_modified"):
+                        results["files_modified"].append(action_result["file_modified"])
+                    if action_result.get("error"):
+                        results["errors"].append(action_result["error"])
         
         # 3. Válasz szövegének tisztítása (kód blokkok eltávolítása)
         results["response_text"] = self._clean_response_text(ai_response)
@@ -99,18 +110,36 @@ class ActionExecutor:
         """Explicit parancsok kinyerése (CREATE_FILE, MODIFY_FILE, DELETE_FILE, RUN_COMMAND)"""
         actions = []
         
-        # CREATE_FILE pattern
-        create_pattern = r"CREATE_FILE:\s*([^\n]+)\s*\n```(\w+)?\s*(.*?)```"
-        for match in re.finditer(create_pattern, text, re.DOTALL):
-            file_path = match.group(1).strip()
-            language = match.group(2).strip() if match.group(2) else "text"
-            content = match.group(3).strip()
-            actions.append({
-                "type": "CREATE_FILE",
-                "file_path": file_path,
-                "content": content,
-                "language": language
-            })
+        # CREATE_FILE pattern - rugalmasabb minta
+        create_patterns = [
+            r"CREATE_FILE:\s*([^\n]+)\s*\n```(\w+)?\s*(.*?)```",  # CREATE_FILE: fájlnév\n```nyelv\nkód\n```
+            r"CREATE_FILE:\s*([^\n]+)",  # CREATE_FILE: fájlnév (kód blokk nélkül)
+        ]
+        
+        for create_pattern in create_patterns:
+            for match in re.finditer(create_pattern, text, re.DOTALL):
+                file_path = match.group(1).strip()
+                if len(match.groups()) >= 3:
+                    language = match.group(2).strip() if match.group(2) else "text"
+                    content = match.group(3).strip()
+                else:
+                    # Ha nincs kód blokk, keressük meg a következő kód blokkot
+                    remaining_text = text[match.end():]
+                    code_blocks = self._extract_code_blocks(remaining_text)
+                    if code_blocks:
+                        content = code_blocks[0][0]
+                        language = code_blocks[0][1]
+                    else:
+                        content = ""
+                        language = "text"
+                
+                actions.append({
+                    "type": "CREATE_FILE",
+                    "file_path": file_path,
+                    "content": content,
+                    "language": language
+                })
+                break  # Csak az első egyezést használjuk
         
         # MODIFY_FILE pattern
         modify_pattern = r"MODIFY_FILE:\s*([^\n]+)\s*\n```(\w+)?\s*(.*?)```"
@@ -397,6 +426,124 @@ class ActionExecutor:
         text = re.sub(r'\n{3,}', '\n\n', text)
         
         return text.strip()
+    
+    def _try_intelligent_file_creation(self, user_message: str, ai_response: str) -> Optional[Dict]:
+        """Intelligens fájl létrehozás a felhasználó üzenetéből"""
+        try:
+            user_lower = user_message.lower()
+            
+            # Fájl létrehozási kulcsszavak
+            create_keywords = ["hoz", "készíts", "create", "make", "írd", "write", "generálj", "generate"]
+            file_keywords = ["fájl", "file", "txt", ".py", ".js", ".txt", ".json", ".md"]
+            
+            # Ellenőrzés: van-e fájl létrehozási kérés?
+            has_create = any(keyword in user_lower for keyword in create_keywords)
+            has_file = any(keyword in user_lower for keyword in file_keywords)
+            
+            if not (has_create and has_file):
+                return None
+            
+            # Fájlnév kinyerése
+            file_name = self._extract_filename_from_message(user_message)
+            if not file_name:
+                return None
+            
+            # Tartalom kinyerése (ha van kód blokk az AI válaszban)
+            code_blocks = self._extract_code_blocks(ai_response)
+            content = ""
+            
+            if code_blocks:
+                # Ha van kód blokk, azt használjuk
+                content = code_blocks[0][0]  # Első kód blokk tartalma
+            else:
+                # Ha nincs kód blokk, üres fájlt hozunk létre vagy egyszerű tartalmat
+                # Próbáljuk kinyerni a tartalmat a felhasználó üzenetéből
+                content = self._extract_content_from_message(user_message)
+            
+            # Fájl létrehozása
+            result = self.fm.write_file(file_name, content)
+            
+            if result.get("success"):
+                logger.info(f"Intelligens fájl létrehozás: {file_name}")
+                return {
+                    "type": "intelligent_file_creation",
+                    "file_created": file_name,
+                    "success": True
+                }
+            else:
+                logger.error(f"Fájl létrehozás hiba: {result.get('error')}")
+                return {
+                    "type": "intelligent_file_creation",
+                    "error": result.get("error")
+                }
+        
+        except Exception as e:
+            logger.error(f"Intelligens fájl létrehozás hiba: {e}")
+            return None
+    
+    def _extract_filename_from_message(self, message: str) -> Optional[str]:
+        """Fájlnév kinyerése a felhasználó üzenetéből"""
+        import re
+        
+        # Minta: "hozz létre egy test.txt fájlt" vagy "create test.py" vagy "test.txt"
+        patterns = [
+            r'([a-zA-Z0-9_\-\.]+\.(txt|py|js|ts|json|md|html|css|yaml|yml|sh|bat|ps1))',  # Fájlnév kiterjesztéssel
+            r'(?:fájl|file)[\s:]+([a-zA-Z0-9_\-\.]+\.(txt|py|js|ts|json|md|html|css|yaml|yml|sh|bat|ps1))',  # "fájl: test.txt"
+            r'([a-zA-Z0-9_\-]+)\.(txt|py|js|ts|json|md|html|css|yaml|yml|sh|bat|ps1)',  # "test.txt" formátum
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match:
+                filename = match.group(1) if match.lastindex >= 1 else match.group(0)
+                # Ha nincs kiterjesztés, hozzáadjuk
+                if '.' not in filename:
+                    ext_match = re.search(r'\.(txt|py|js|ts|json|md|html|css|yaml|yml|sh|bat|ps1)', message, re.IGNORECASE)
+                    if ext_match:
+                        filename = filename + ext_match.group(0)
+                    else:
+                        filename = filename + '.txt'  # Alapértelmezett
+                return filename
+        
+        # Ha nincs fájlnév, de van "fájl" vagy "file" kulcsszó, generálunk egyet
+        if any(keyword in message.lower() for keyword in ["fájl", "file"]):
+            # Egyszerű fájlnév generálás
+            words = re.findall(r'\b[a-zA-Z0-9]+\b', message)
+            if words:
+                # Keresünk egy értelmes szót (nem kulcsszó)
+                skip_words = {"hoz", "létre", "készíts", "create", "make", "fájl", "file", "egy", "a", "az", "egy", "egy"}
+                for word in words:
+                    if word.lower() not in skip_words and len(word) > 2:
+                        return f"{word.lower()}.txt"
+                # Ha nincs jó szó, használjuk az elsőt
+                if words:
+                    return f"{words[0].lower()}.txt"
+        
+        return None
+    
+    def _extract_content_from_message(self, message: str) -> str:
+        """Tartalom kinyerése a felhasználó üzenetéből"""
+        import re
+        
+        # Próbáljuk kinyerni idézőjelek közötti tartalmat
+        quoted = re.findall(r'["\']([^"\']+)["\']', message)
+        if quoted:
+            return quoted[0]
+        
+        # Próbáljuk kinyerni "tartalommal" vagy "content" után
+        content_patterns = [
+            r'tartalom[mal]*[:=]\s*["\']?([^"\']+)["\']?',
+            r'content[:=]\s*["\']?([^"\']+)["\']?',
+            r'írj[ad]*[:=]\s*["\']?([^"\']+)["\']?',
+        ]
+        
+        for pattern in content_patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        
+        # Ha nincs tartalom, üres string
+        return ""
     
     def _generate_file_path(self, prompt: str, language: str) -> str:
         """Fájl útvonal generálása"""

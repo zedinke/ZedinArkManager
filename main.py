@@ -331,7 +331,7 @@ async def chat(request: ChatRequest, api_key: Optional[str] = Security(verify_ap
 
 FONTOS SZABÁLYOK:
 1. SOHA ne írj kódot a válaszodba, csak hajtsd végre az utasításokat!
-2. Amikor kódot vagy fájlt kérnek, használd az alábbi formátumokat:
+2. Amikor kódot vagy fájlt kérnek, MINDIG használd az alábbi formátumokat:
    - CREATE_FILE: fájlnév
    ```nyelv
    kód tartalom
@@ -346,13 +346,29 @@ FONTOS SZABÁLYOK:
 3. A válaszodban csak a végrehajtás eredményét írd le, ne a kódot!
 4. Teljes jogosultságod van: fájlok létrehozása, módosítása, törlése, shell parancsok futtatása.
 5. Minden utasítást azonnal hajts végre, ne csak írd le hogyan kellene.
+6. HA FÁJLT KÉRNEK, MINDIG HASZNÁLD A CREATE_FILE FORMÁTUMOT! SOHA ne csak válaszolj, hogy "létrehoztam", hanem ténylegesen írd ki a CREATE_FILE parancsot!
 
 Példa:
 Felhasználó: "Hozz létre egy test.py fájlt print('Hello') tartalommal"
-Te: "Létrehoztam a test.py fájlt." (és végrehajtod: CREATE_FILE: test.py ```python\nprint('Hello')\n```)
+Te: "Létrehoztam a test.py fájlt." 
+ÉS MINDIG ÍRD KI:
+CREATE_FILE: test.py
+```python
+print('Hello')
+```
+
+Felhasználó: "hozz létre egy tst.txt fájlt"
+Te: "Létrehoztam a tst.txt fájlt."
+ÉS MINDIG ÍRD KI:
+CREATE_FILE: tst.txt
+```text
+
+```
 
 Felhasználó: "Futtasd le a test.py fájlt"
-Te: "Futtattam a test.py fájlt. Eredmény: Hello" (és végrehajtod: RUN_COMMAND: python test.py)"""
+Te: "Futtattam a test.py fájlt. Eredmény: Hello" 
+ÉS MINDIG ÍRD KI:
+RUN_COMMAND: python test.py"""
             messages.insert(0, {"role": "system", "content": system_prompt})
         
         # Distributed computing KIKAPCSOLVA - csak szerver erőforrásokat használjuk
