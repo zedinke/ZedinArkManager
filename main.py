@@ -296,8 +296,9 @@ A kódot mindig ``` nyelv formátumban add vissza."""
                 messages.insert(0, {"role": "system", "content": system_prompt})
         
         # Distributed computing használata, ha be van kapcsolva és van elérhető csomópont
+        # Alapértelmezetten be van kapcsolva, ha van elérhető csomópont
         available_nodes = distributed_network.get_available_nodes(model=request.model)
-        use_distributed_computing = use_distributed and len(available_nodes) > 0
+        use_distributed_computing = len(available_nodes) > 0
         
         # Logolás: mely csomópontok lesznek használva
         if use_distributed_computing:
