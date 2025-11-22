@@ -85,7 +85,16 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             console.log('🔍 Registering local compute node...');
             
             const config = vscode.workspace.getConfiguration('zedinark');
-            const localOllamaUrl = config.get<string>('localOllamaUrl', 'http://localhost:11434');
+            let localOllamaUrl = config.get<string>('localOllamaUrl', 'http://localhost:11434');
+            
+            // FONTOS: Ha localhost, akkor a szerver nem fogja tudni elérni a kliens gépet
+            // A distributed computing-hez a szervernek elérhető URL kell (pl. http://192.168.1.100:11434)
+            // Jelenleg localhost esetén csak akkor működik, ha a kliens és szerver ugyanazon a gépen futnak
+            if (localOllamaUrl.includes('localhost') || localOllamaUrl.includes('127.0.0.1')) {
+                console.warn('⚠️ WARNING: Using localhost for Ollama URL. For distributed computing to work, the server needs to access your local Ollama.');
+                console.warn('   Consider setting zedinark.localOllamaUrl to your machine\'s IP address (e.g., http://192.168.1.100:11434)');
+                console.warn('   Or ensure your local Ollama is accessible from the server network.');
+            }
             
             // Modellek lekérése
             const models = await this.localOllama.listModels();
@@ -300,34 +309,16 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             // Hozzáadjuk a felhasználó üzenetét a történethez
             this.conversationHistory.push({ role: 'user', content: text });
 
-            // Párhuzamos vagy intelligens erőforrás választás
+            // MINDIG a szervernek küldjük a kérést, hogy a distributed computing használhassa mindkét erőforrást párhuzamosan
+            // A szerver oldali distributed computing automatikusan elosztja a kérést minden elérhető csomópontra
+            // (szerver + helyi gép) párhuzamosan
             let response: string;
             
-            if (this.useParallelMode && this.useLocalOllama && this.localOllama && this.localModels.includes(selectedModel)) {
-                // Párhuzamos mód: mindkét erőforrást egyszerre használja
-                response = await this.handleParallelRequest(selectedModel);
-            } else {
-                // Intelligens erőforrás választás (load balancing)
-                const useLocal = this.shouldUseLocal(selectedModel);
-                
-                if (useLocal && this.useLocalOllama && this.localOllama) {
-                    // Lokális Ollama használata (saját GPU)
-                    try {
-                        response = await this.localOllama.chatWithHistory(this.conversationHistory, selectedModel);
-                        console.log('Response from local GPU');
-                    } catch (localError: any) {
-                        // Ha lokális hiba, fallback távoli szerverre
-                        console.warn('Local Ollama failed, falling back to remote:', localError.message);
-                        response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
-                        console.log('Response from remote server (fallback)');
-                    }
-                    } else {
-                    // Távoli API használata - MINDIG distributed computing-et használ, ha elérhető
-                    // A szerver automatikusan elosztja a kérést minden elérhető csomópontra (beleértve a szerver node-ot is)
-                    response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
-                    console.log('Response from remote server (distributed computing)');
-                }
-            }
+            // Távoli API használata - MINDIG distributed computing-et használ, ha elérhető
+            // A szerver automatikusan elosztja a kérést minden elérhető csomópontra párhuzamosan
+            // (szerver node + regisztrált kliens node-ok)
+            response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
+            console.log('✅ Response from distributed computing (server + local GPU in parallel)');
 
             // Hozzáadjuk az AI válaszát a történethez
             this.conversationHistory.push({ role: 'assistant', content: response });
