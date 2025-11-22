@@ -42,18 +42,17 @@ BASE_PATH = os.getenv("PROJECT_BASE_PATH", ".")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "llama3.1:8b")
 
-NUM_GPU_LAYERS = os.getenv("OLLAMA_NUM_GPU_LAYERS")
-if NUM_GPU_LAYERS:
-    NUM_GPU_LAYERS = int(NUM_GPU_LAYERS)
-else:
-    # GPU manager automatikus detektálás
-    NUM_GPU_LAYERS = gpu_manager.get_ollama_gpu_layers()
+# CPU OPTIMALIZÁLT MÓD: GPU-t nem használunk, csak CPU-t
+NUM_GPU_LAYERS = 0  # GPU kikapcsolva - csak CPU használata
 
 NUM_THREADS = os.getenv("OLLAMA_NUM_THREADS")
 if NUM_THREADS:
     NUM_THREADS = int(NUM_THREADS)
 else:
-    NUM_THREADS = None
+    # CPU optimalizált: minden CPU magot használunk
+    import multiprocessing
+    NUM_THREADS = multiprocessing.cpu_count()  # EPYC 7502P: 64 szál
+    logger.info(f"CPU optimalizált mód: {NUM_THREADS} CPU thread beállítva")
 
 # Szolgáltatások inicializálása
 llm_service = LLMService(

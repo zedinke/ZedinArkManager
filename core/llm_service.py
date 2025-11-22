@@ -35,14 +35,17 @@ class LLMService:
         self.num_gpu_layers = num_gpu_layers
         
         # CPU thread szám (None = automatikus detektálás)
+        # CPU OPTIMALIZÁLT: minden CPU magot használunk (64 szál a szerveren)
         if num_threads is None:
             env_threads = os.getenv("OLLAMA_NUM_THREADS")
             if env_threads:
                 self.num_threads = int(env_threads)
             else:
-                # Automatikus: CPU magok száma, de max 16 (túl sok thread CPU pörgést okoz)
+                # CPU optimalizált: minden CPU magot használunk
                 cpu_count = multiprocessing.cpu_count()
-                self.num_threads = min(cpu_count, 16)  # Max 16 thread
+                # EPYC 7502P: 32 mag, 64 szál - használjuk az összeset
+                self.num_threads = cpu_count  # Minden CPU magot használunk
+                logger.info(f"CPU optimalizált mód: {self.num_threads} CPU thread használata")
         else:
             self.num_threads = num_threads
     
@@ -75,15 +78,19 @@ class LLMService:
         if context:
             full_prompt = f"{context}\n\n{prompt}"
         
-        # Optimalizált options generate-hez is (12 CPU mag)
+        # CPU optimalizált options - minden CPU magot használunk
         options = {
             "temperature": temperature,
             "num_predict": max_tokens,
-            "num_thread": min(self.num_threads, 12),  # Max 12 thread (több erőforrás)
+            "num_thread": self.num_threads,  # Minden CPU magot használunk (CPU optimalizált)
         }
         
-        if self.num_gpu_layers is not None:
+        # CPU optimalizált mód: GPU-t nem használunk
+        if self.num_gpu_layers is not None and self.num_gpu_layers > 0:
             options["num_gpu"] = self.num_gpu_layers
+        else:
+            # CPU-only mód: GPU layer-ek kikapcsolva
+            options["num_gpu"] = 0
         
         # Optimalizált memória beállítások
         options["use_mmap"] = True
@@ -128,8 +135,12 @@ class LLMService:
             "num_thread": min(self.num_threads, 12),  # Max 12 thread (több erőforrás)
         }
         
-        if self.num_gpu_layers is not None:
+        # CPU optimalizált mód: GPU-t nem használunk
+        if self.num_gpu_layers is not None and self.num_gpu_layers > 0:
             options["num_gpu"] = self.num_gpu_layers
+        else:
+            # CPU-only mód: GPU layer-ek kikapcsolva
+            options["num_gpu"] = 0
         
         options["use_mmap"] = True
         options["use_mlock"] = True
@@ -171,14 +182,18 @@ class LLMService:
         """Chat API használata (több üzenet kontextussal)"""
         model = model or self.default_model
         
-        # Optimalizált options (12 CPU mag, 300 sor válasz)
+        # CPU optimalizált options - minden CPU magot használunk
         options = {
             "temperature": temperature,
-            "num_thread": min(self.num_threads, 12),  # Max 12 thread (több erőforrás)
+            "num_thread": self.num_threads,  # Minden CPU magot használunk (CPU optimalizált)
         }
         
-        if self.num_gpu_layers is not None:
+        # CPU optimalizált mód: GPU-t nem használunk
+        if self.num_gpu_layers is not None and self.num_gpu_layers > 0:
             options["num_gpu"] = self.num_gpu_layers
+        else:
+            # CPU-only mód: GPU layer-ek kikapcsolva
+            options["num_gpu"] = 0
         
         # Optimalizált memória beállítások
         options["use_mmap"] = True
@@ -237,8 +252,12 @@ class LLMService:
             "num_thread": min(self.num_threads, 12),  # Max 12 thread (több erőforrás)
         }
         
-        if self.num_gpu_layers is not None:
+        # CPU optimalizált mód: GPU-t nem használunk
+        if self.num_gpu_layers is not None and self.num_gpu_layers > 0:
             options["num_gpu"] = self.num_gpu_layers
+        else:
+            # CPU-only mód: GPU layer-ek kikapcsolva
+            options["num_gpu"] = 0
         
         # Optimalizált memória beállítások
         options["use_mmap"] = True
