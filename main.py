@@ -49,10 +49,11 @@ NUM_THREADS = os.getenv("OLLAMA_NUM_THREADS")
 if NUM_THREADS:
     NUM_THREADS = int(NUM_THREADS)
 else:
-    # CPU optimalizált: minden CPU magot használunk
+    # CPU optimalizált: maximum 70% CPU erőforrás használata
     import multiprocessing
-    NUM_THREADS = multiprocessing.cpu_count()  # EPYC 7502P: 64 szál
-    logger.info(f"CPU optimalizált mód: {NUM_THREADS} CPU thread beállítva")
+    cpu_count = multiprocessing.cpu_count()
+    NUM_THREADS = int(cpu_count * 0.7)  # 70% CPU erőforrás (EPYC 7502P: ~45 szál)
+    logger.info(f"CPU optimalizált mód: {NUM_THREADS} CPU thread beállítva (70% of {cpu_count} cores)")
 
 # Szolgáltatások inicializálása
 llm_service = LLMService(

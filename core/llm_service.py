@@ -38,17 +38,17 @@ class LLMService:
         self.num_gpu_layers = num_gpu_layers
         
         # CPU thread szám (None = automatikus detektálás)
-        # CPU OPTIMALIZÁLT: minden CPU magot használunk (64 szál a szerveren)
+        # CPU OPTIMALIZÁLT: maximum 70% CPU erőforrás használata
         if num_threads is None:
             env_threads = os.getenv("OLLAMA_NUM_THREADS")
             if env_threads:
                 self.num_threads = int(env_threads)
             else:
-                # CPU optimalizált: minden CPU magot használunk
+                # CPU optimalizált: 70% CPU erőforrás használata
                 cpu_count = multiprocessing.cpu_count()
-                # EPYC 7502P: 32 mag, 64 szál - használjuk az összeset
-                self.num_threads = cpu_count  # Minden CPU magot használunk
-                logger.info(f"CPU optimalizált mód: {self.num_threads} CPU thread használata")
+                # EPYC 7502P: 32 mag, 64 szál - 70% = ~45 szál
+                self.num_threads = int(cpu_count * 0.7)  # 70% CPU erőforrás
+                logger.info(f"CPU optimalizált mód: {self.num_threads} CPU thread használata (70% of {cpu_count} cores)")
         else:
             self.num_threads = num_threads
     
