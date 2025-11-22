@@ -98,6 +98,7 @@ export class ZedinArkAPI {
         cpuCores: number = 0
     ): Promise<any> {
         try {
+            console.log(`📡 Sending registration request to server...`);
             const response = await this.client.post('/api/distributed/register', {
                 node_id: nodeId,
                 user_id: userId,
@@ -107,8 +108,12 @@ export class ZedinArkAPI {
                 gpu_memory: gpuMemory,
                 cpu_cores: cpuCores
             });
+            console.log(`✅ Registration response:`, response.data);
             return response.data;
         } catch (error: any) {
+            console.error(`❌ Registration error:`, error);
+            console.error(`   Status:`, error.response?.status);
+            console.error(`   Data:`, error.response?.data);
             throw new Error(`Failed to register compute node: ${error.response?.data?.detail || error.message}`);
         }
     }

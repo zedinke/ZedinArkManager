@@ -78,14 +78,18 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
     private async registerLocalNode() {
         try {
             if (!this.localOllama) {
+                console.warn('⚠️ Cannot register local node: localOllama not initialized');
                 return;
             }
+            
+            console.log('🔍 Registering local compute node...');
             
             const config = vscode.workspace.getConfiguration('zedinark');
             const localOllamaUrl = config.get<string>('localOllamaUrl', 'http://localhost:11434');
             
             // Modellek lekérése
             const models = await this.localOllama.listModels();
+            console.log(`📦 Found ${models.length} local models: ${models.join(', ')}`);
             
             // Gépadatok gyűjtése
             const hostname = os.hostname();
@@ -109,8 +113,13 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             const nodeId = `user-${hostname}-${platform}`;
             const nodeName = `${hostname} (${platform} ${arch})`;
             
+            console.log(`📝 Registering node: ${nodeId} (${nodeName})`);
+            console.log(`   - Ollama URL: ${localOllamaUrl}`);
+            console.log(`   - CPU cores: ${cpuCores}`);
+            console.log(`   - GPU: ${gpuCount} (${gpuMemory} MB)`);
+            
             // Regisztrálás
-            await this.api.registerComputeNode(
+            const result = await this.api.registerComputeNode(
                 nodeId,
                 'user',
                 nodeName,
@@ -120,10 +129,29 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 cpuCores
             );
             
-            console.log(`Local compute node registered: ${nodeId} (${cpuCores} CPU cores, ${gpuCount} GPU)`);
+            console.log(`✅ Local compute node registered successfully: ${nodeId}`);
+            console.log(`   Result:`, result);
+            
+            // Értesítés a felhasználónak
+            if (this._view) {
+                this._view.webview.postMessage({
+                    command: 'feedback',
+                    type: 'success',
+                    content: `✅ Helyi gép regisztrálva: ${nodeName}`
+                });
+            }
         } catch (error: any) {
-            console.error('Failed to register local node:', error);
-            // Ne jelenítsünk hibát, mert ez opcionális funkció
+            console.error('❌ Failed to register local node:', error);
+            console.error('   Error details:', error.message, error.stack);
+            
+            // Hibajelzés a felhasználónak
+            if (this._view) {
+                this._view.webview.postMessage({
+                    command: 'feedback',
+                    type: 'error',
+                    content: `❌ Helyi gép regisztrálása sikertelen: ${error.message}`
+                });
+            }
         }
     }
 

@@ -14,21 +14,20 @@ let localOllama: LocalOllamaAPI | null = null;
 async function registerLocalNode(api: ZedinArkAPI) {
     try {
         const config = vscode.workspace.getConfiguration('zedinark');
-        const useLocalOllama = config.get<boolean>('useLocalOllama', false);
         const localOllamaUrl = config.get<string>('localOllamaUrl', 'http://localhost:11434');
         
-        if (!useLocalOllama) {
-            return; // Ha nincs bekapcsolva a local Ollama, ne regisztráljuk
-        }
+        console.log('🔍 Checking local Ollama availability...');
         
-        // Ellenőrzés: elérhető-e a lokális Ollama
+        // Ellenőrzés: elérhető-e a lokális Ollama (nem kell bekapcsolni a useLocalOllama-t)
         const localOllamaCheck = new LocalOllamaAPI(localOllamaUrl);
         const isAvailable = await localOllamaCheck.checkConnection();
         
         if (!isAvailable) {
-            console.log('Local Ollama not available, skipping node registration');
+            console.log('⚠️ Local Ollama not available, skipping node registration');
             return;
         }
+        
+        console.log('✅ Local Ollama is available, proceeding with registration...');
         
         // Modellek lekérése
         const models = await localOllamaCheck.listModels();
