@@ -7,9 +7,24 @@ error: externally-managed-environment
 
 Ez azért történik, mert a virtual environment nincs aktiválva.
 
-## Megoldás
+## Gyors megoldás (ajánlott)
 
-### 1. Lépj ki az extension mappából
+### Automatikus telepítési script használata:
+```bash
+cd ~/ZedinArkManager
+chmod +x install_aiohttp.sh
+./install_aiohttp.sh
+```
+
+Ez automatikusan:
+- Megkeresi a virtual environment-et
+- Aktiválja
+- Telepíti az aiohttp-ot
+- Ellenőrzi a telepítést
+
+## Manuális telepítés
+
+### 1. Lépj a fő mappába
 ```bash
 cd ~/ZedinArkManager
 ```
@@ -19,10 +34,9 @@ cd ~/ZedinArkManager
 source ai_venv/bin/activate
 ```
 
-Vagy ha a virtual environment a szülő mappában van:
-```bash
-source ../ai_venv/bin/activate
-```
+**Fontos:** A prompt elején meg kell jelennie: `(ai_venv)`
+
+Ha nem látod, akkor a virtual environment nincs aktiválva!
 
 ### 3. Telepítsd az aiohttp-ot
 ```bash
