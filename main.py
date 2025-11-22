@@ -339,23 +339,23 @@ A kódot mindig ``` nyelv formátumban add vissza."""
         # Hagyományos lokális feldolgozás
         cache_key = None
         if request.use_cache and not has_system and len(messages) == 1:
-                last_msg = messages[-1]["content"] if messages else ""
-                cached_response = response_cache.get(last_msg, request.model, request.temperature)
-                if cached_response:
-                    response = cached_response
-                else:
-                    response = llm_service.chat(
-                        messages=messages,
-                        model=request.model,
-                        temperature=request.temperature
-                    )
-                    response_cache.set(last_msg, response, request.model, request.temperature)
+            last_msg = messages[-1]["content"] if messages else ""
+            cached_response = response_cache.get(last_msg, request.model, request.temperature)
+            if cached_response:
+                response = cached_response
             else:
                 response = llm_service.chat(
                     messages=messages,
                     model=request.model,
                     temperature=request.temperature
                 )
+                response_cache.set(last_msg, response, request.model, request.temperature)
+        else:
+            response = llm_service.chat(
+                messages=messages,
+                model=request.model,
+                temperature=request.temperature
+            )
         
         last_user_message = messages[-1]["content"] if messages and messages[-1].get("role") == "user" else ""
         
