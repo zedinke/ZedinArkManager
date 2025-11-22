@@ -44,12 +44,20 @@ class ComputeNode:
     total_requests: int = 0
     successful_requests: int = 0
     
-    def is_available(self, max_age_seconds: int = 60) -> bool:
-        """Ellenőrzi, hogy elérhető-e a csomópont"""
-        if self.status != NodeStatus.ONLINE:
+    def is_available(self, max_age_seconds: int = 600) -> bool:
+        """Ellenőrzi, hogy elérhető-e a csomópont (10 perc offline timeout)"""
+        # Ha ERROR státuszban van, nem elérhető
+        if self.status == NodeStatus.ERROR:
             return False
-        age = (datetime.now() - self.last_seen).total_seconds()
-        return age < max_age_seconds and self.current_load < 0.9
+        # Ha ONLINE vagy BUSY, akkor elérhető (BUSY = ideiglenesen nem elérhető, de ne távolítsuk el)
+        if self.status == NodeStatus.ONLINE or self.status == NodeStatus.BUSY:
+            age = (datetime.now() - self.last_seen).total_seconds()
+            return age < max_age_seconds and self.current_load < 0.9
+        # Ha OFFLINE, akkor csak akkor elérhető, ha nem régen volt aktív
+        if self.status == NodeStatus.OFFLINE:
+            age = (datetime.now() - self.last_seen).total_seconds()
+            return age < max_age_seconds
+        return False
 
 
 @dataclass
@@ -130,22 +138,35 @@ class DistributedComputingNetwork:
             # Ellenőrizzük az elérhetőséget (de a szerver node-ot mindig használjuk, ha online)
             is_server_node = node.node_id.startswith('server-')
             
-            # Ha nem szerver node és nem elérhető, kihagyjuk
-            # DE: Ha BUSY státuszban van (nem ERROR), akkor is megpróbáljuk használni
-            # Ez lehetővé teszi, hogy a node-ok időnként offline legyenek, de ne távolítsuk el
+            # Ha nem szerver node
             if not is_server_node:
+                # ERROR státuszban lévő node-ot kihagyjuk
                 if node.status == NodeStatus.ERROR:
-                    # ERROR státuszban lévő node-ot kihagyjuk
                     continue
-                elif not node.is_available():
-                    # Ha offline vagy túl régen volt aktív, de nem ERROR, akkor is megpróbáljuk
-                    # (lehet, hogy csak ideiglenesen nem elérhető)
-                    if node.status == NodeStatus.BUSY:
-                        # BUSY node-ot is megpróbáljuk (lehet, hogy most már elérhető)
-                        logger.debug(f"🔄 Attempting to use BUSY node: {node.node_id}")
+                # BUSY node-okat is használjuk (lehet, hogy most már elérhető)
+                elif node.status == NodeStatus.BUSY:
+                    # BUSY node-okat is hozzáadjuk, de csak akkor, ha nem régen volt aktív (10 perc)
+                    age = (datetime.now() - node.last_seen).total_seconds()
+                    if age < 600:  # 10 perc
+                        logger.debug(f"🔄 Including BUSY node: {node.node_id} (will retry, age: {age:.1f}s)")
+                        # Folytatjuk, hozzáadjuk a listához
                     else:
-                        # Ha OFFLINE és régen volt aktív, kihagyjuk
+                        # Ha túl régen volt aktív, kihagyjuk
+                        logger.debug(f"⏭️ Skipping BUSY node: {node.node_id} (too old: {age:.1f}s)")
                         continue
+                # ONLINE node-okat ellenőrizzük
+                elif node.status == NodeStatus.ONLINE:
+                    # ONLINE node-okat csak akkor használjuk, ha elérhető
+                    if not node.is_available():
+                        continue
+                # OFFLINE node-okat csak akkor használjuk, ha nem régen volt aktív
+                elif node.status == NodeStatus.OFFLINE:
+                    age = (datetime.now() - node.last_seen).total_seconds()
+                    if age >= 600:  # 10 perc
+                        continue
+                else:
+                    # Ismeretlen státusz, kihagyjuk
+                    continue
             
             # Ha szerver node, akkor csak az ONLINE státuszt ellenőrizzük
             if is_server_node and node.status != NodeStatus.ONLINE:
