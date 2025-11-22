@@ -207,14 +207,23 @@ class DistributedComputingNetwork:
                 if node_id in self.nodes:
                     self.nodes[node_id].total_requests += 1
                     self.nodes[node_id].successful_requests += 1
+                logger.info(f"✅ Node {node_id} responded successfully")
             except asyncio.TimeoutError:
-                errors[node_id] = "Timeout"
+                errors[node_id] = "Timeout (300s)"
+                logger.warning(f"⏱️ Node {node_id} timeout: No response within 300 seconds")
                 if node_id in self.nodes:
                     self.nodes[node_id].total_requests += 1
+                    # Ne állítsuk ERROR-ra, csak timeout-ot jelöljük (később újra próbálhatjuk)
+                    self.update_node_status(node_id, NodeStatus.BUSY)
             except Exception as e:
-                errors[node_id] = str(e)
+                error_msg = str(e)
+                errors[node_id] = error_msg
+                logger.error(f"❌ Node {node_id} error: {error_msg}")
                 if node_id in self.nodes:
                     self.nodes[node_id].total_requests += 1
+                    # Csak akkor állítsuk ERROR-ra, ha valódi hiba van (nem timeout)
+                    if "timeout" not in error_msg.lower() and "connection" not in error_msg.lower():
+                        self.update_node_status(node_id, NodeStatus.ERROR)
         
         task.results = results
         task.status = "completed" if results else "failed"
@@ -224,8 +233,14 @@ class DistributedComputingNetwork:
         if results:
             combined_response = self._combine_responses(list(results.values()))
             logger.info(f"Task {task_id} completed: {len(results)}/{len(available_nodes)} successful")
+            if errors:
+                failed_nodes = list(errors.keys())
+                logger.warning(f"⚠️ Some nodes failed ({len(errors)}/{len(available_nodes)}): {failed_nodes}")
+                for node_id, error_msg in errors.items():
+                    logger.warning(f"   - {node_id}: {error_msg}")
             return combined_response
         else:
+            logger.error(f"❌ All nodes failed for task {task_id}: {errors}")
             raise Exception(f"All nodes failed: {errors}")
     
     async def _execute_on_node(self, node: ComputeNode, model: str,
