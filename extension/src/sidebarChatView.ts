@@ -73,15 +73,62 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
     }
     
     /**
-     * Lokális IP cím detektálása a szerver oldali API segítségével
+     * Publikus IP cím lekérése külső szolgáltatástól
+     * Fontos: ha a szerver és kliens különböző hálózatokban van (pl. Helsinki vs Magyarország),
+     * akkor a publikus IP-t kell használni, nem a privát IP-t
      */
-    private async detectLocalIP(apiUrl: string): Promise<string | null> {
+    private async detectPublicIP(): Promise<string | null> {
         try {
-            // A szerver oldali API-nak kell egy endpoint, ami visszaadja a kliens IP-jét
-            // Jelenleg egyszerű megoldás: a kliens IP-t a request header-ből kapjuk
-            // De mivel a VS Code extension nem tudja közvetlenül, próbáljuk meg más módon
+            console.log('🌐 Detecting public IP address...');
             
-            // Alternatíva: használjuk a network interface-eket
+            // Több szolgáltatást próbálunk, ha az egyik nem elérhető
+            const ipServices = [
+                'https://api.ipify.org?format=json',
+                'https://ifconfig.me/ip',
+                'https://icanhazip.com',
+                'https://api.ip.sb/ip'
+            ];
+            
+            for (const serviceUrl of ipServices) {
+                try {
+                    const response = await fetch(serviceUrl, { 
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json, text/plain' },
+                        signal: AbortSignal.timeout(5000) // 5 másodperc timeout
+                    });
+                    
+                    let ip: string;
+                    if (serviceUrl.includes('ipify.org')) {
+                        const data = await response.json();
+                        ip = data.ip;
+                    } else {
+                        ip = (await response.text()).trim();
+                    }
+                    
+                    // Validáljuk, hogy valódi IP cím-e
+                    if (ip && /^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) {
+                        console.log(`✅ Public IP detected: ${ip} (from ${serviceUrl})`);
+                        return ip;
+                    }
+                } catch (error) {
+                    console.warn(`⚠️ Failed to get IP from ${serviceUrl}:`, error);
+                    continue;
+                }
+            }
+            
+            console.warn('⚠️ Could not detect public IP from any service');
+            return null;
+        } catch (error) {
+            console.error('❌ Public IP detection error:', error);
+            return null;
+        }
+    }
+    
+    /**
+     * Lokális IP cím detektálása (fallback, ha publikus IP nem elérhető)
+     */
+    private detectLocalIP(): string | null {
+        try {
             const networkInterfaces = os.networkInterfaces();
             for (const interfaceName in networkInterfaces) {
                 const addresses = networkInterfaces[interfaceName];
@@ -117,25 +164,51 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             const config = vscode.workspace.getConfiguration('zedinark');
             let localOllamaUrl = config.get<string>('localOllamaUrl', 'http://localhost:11434');
             
-            // FONTOS: Ha localhost, akkor a szerver nem fogja tudni elérni a kliens gépet
-            // Automatikus IP detektálás: ha localhost van, próbáljuk meg megtalálni a saját IP-t
-            if (localOllamaUrl.includes('localhost') || localOllamaUrl.includes('127.0.0.1')) {
-                console.log('🔍 Detecting local IP address for distributed computing...');
+            // FONTOS: Ha localhost vagy privát IP van, akkor a szerver nem fogja tudni elérni a kliens gépet
+            // Különösen, ha a szerver és kliens különböző hálózatokban van (pl. Helsinki vs Magyarország)
+            // Automatikus publikus IP detektálás
+            if (localOllamaUrl.includes('localhost') || localOllamaUrl.includes('127.0.0.1') || 
+                localOllamaUrl.includes('192.168.') || localOllamaUrl.includes('10.') || 
+                localOllamaUrl.includes('172.16.') || localOllamaUrl.includes('172.17.') ||
+                localOllamaUrl.includes('172.18.') || localOllamaUrl.includes('172.19.') ||
+                localOllamaUrl.includes('172.20.') || localOllamaUrl.includes('172.21.') ||
+                localOllamaUrl.includes('172.22.') || localOllamaUrl.includes('172.23.') ||
+                localOllamaUrl.includes('172.24.') || localOllamaUrl.includes('172.25.') ||
+                localOllamaUrl.includes('172.26.') || localOllamaUrl.includes('172.27.') ||
+                localOllamaUrl.includes('172.28.') || localOllamaUrl.includes('172.29.') ||
+                localOllamaUrl.includes('172.30.') || localOllamaUrl.includes('172.31.')) {
+                
+                console.log('🔍 Detecting public IP address for distributed computing...');
+                console.log('   (Server and client are in different networks, public IP required)');
+                
                 try {
-                    // Próbáljuk meg lekérni a saját IP-t a szervertől (ha elérhető)
-                    // Vagy használjuk a VS Code API-t
-                    const apiUrl = config.get<string>('apiUrl', 'http://135.181.165.27:8000');
-                    const clientIP = await this.detectLocalIP(apiUrl);
-                    if (clientIP) {
-                        // Cseréljük le a localhost-ot a detektált IP-re
-                        localOllamaUrl = localOllamaUrl.replace('localhost', clientIP).replace('127.0.0.1', clientIP);
-                        console.log(`✅ Using detected IP: ${localOllamaUrl}`);
+                    // Először próbáljuk meg a publikus IP-t
+                    const publicIP = await this.detectPublicIP();
+                    if (publicIP) {
+                        // Cseréljük le a localhost/privát IP-t a publikus IP-re
+                        const urlParts = localOllamaUrl.split(':');
+                        if (urlParts.length >= 2) {
+                            const port = urlParts[urlParts.length - 1]; // Port (pl. 11434)
+                            localOllamaUrl = `http://${publicIP}:${port}`;
+                            console.log(`✅ Using public IP: ${localOllamaUrl}`);
+                        } else {
+                            localOllamaUrl = `http://${publicIP}:11434`;
+                            console.log(`✅ Using public IP: ${localOllamaUrl}`);
+                        }
                     } else {
-                        console.warn('⚠️ Could not detect local IP. Server may not be able to access your local Ollama.');
-                        console.warn('   Consider setting zedinark.localOllamaUrl to your machine\'s IP address manually.');
+                        // Fallback: lokális IP (csak akkor működik, ha ugyanazon a hálózaton vannak)
+                        const localIP = this.detectLocalIP();
+                        if (localIP) {
+                            localOllamaUrl = localOllamaUrl.replace('localhost', localIP).replace('127.0.0.1', localIP);
+                            console.warn(`⚠️ Using local IP (may not work if server is remote): ${localOllamaUrl}`);
+                            console.warn('   Consider setting zedinark.localOllamaUrl to your public IP address manually.');
+                        } else {
+                            console.error('❌ Could not detect any IP address. Server will not be able to access your local Ollama.');
+                            console.error('   Please set zedinark.localOllamaUrl to your public IP address manually.');
+                        }
                     }
                 } catch (error) {
-                    console.warn('⚠️ IP detection failed:', error);
+                    console.error('❌ IP detection failed:', error);
                 }
             }
             
