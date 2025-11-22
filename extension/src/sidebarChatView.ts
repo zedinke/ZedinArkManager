@@ -1088,6 +1088,7 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
         let currentMode = 'ask';
         let attachedFiles = [];
         let initialized = false;
+        let eventListenersAttached = false;
 
         // Initialize when DOM is ready
         function initialize() {
@@ -1117,12 +1118,14 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             // Check if all critical elements are available
             if (!messageInput || !sendButton || !messagesDiv) {
                 console.warn('⚠️ Critical elements not found, will retry...');
+                initialized = false; // Reset flag so we can retry
                 return;
             }
             
-            // Prevent duplicate event listeners
-            if (initialized) {
-                console.log('⚠️ Already initialized, skipping event listeners...');
+            // Prevent duplicate event listeners - check if already attached
+            if (eventListenersAttached) {
+                console.log('⚠️ Event listeners already attached, skipping...');
+                initialized = true;
                 return;
             }
 
@@ -1225,24 +1228,43 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
 
             // Send button event listener
             if (sendButton) {
+                // Remove existing listeners first to avoid duplicates
+                const newSendButton = sendButton.cloneNode(true);
+                sendButton.parentNode.replaceChild(newSendButton, sendButton);
+                sendButton = newSendButton;
+                
                 sendButton.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     console.log('🖱️ Send button clicked');
-                    sendMessage();
+                    if (typeof sendMessage === 'function') {
+                        sendMessage();
+                    } else {
+                        console.error('❌ sendMessage function not available');
+                    }
                 });
+                console.log('✅ Send button event listener attached');
             } else {
                 console.error('❌ Send button not found');
             }
 
             // Enter key event listener
             if (messageInput) {
+                // Remove existing listeners first to avoid duplicates
+                const newMessageInput = messageInput.cloneNode(true);
+                messageInput.parentNode.replaceChild(newMessageInput, messageInput);
+                messageInput = newMessageInput;
+                
                 messageInput.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         e.stopPropagation();
                         console.log('⌨️ Enter pressed');
-                        sendMessage();
+                        if (typeof sendMessage === 'function') {
+                            sendMessage();
+                        } else {
+                            console.error('❌ sendMessage function not available');
+                        }
                     }
                 });
                 
@@ -1251,12 +1273,16 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
                     messageInput.style.height = '60px';
                     messageInput.style.height = Math.min(messageInput.scrollHeight, 200) + 'px';
                 });
+                console.log('✅ Message input event listeners attached');
             } else {
                 console.error('❌ Message input not found');
+                return; // Don't mark as initialized if critical elements are missing
             }
 
+            // Mark as initialized only if all event listeners were attached
+            eventListenersAttached = true;
             initialized = true;
-            console.log('✅ Initialization complete');
+            console.log('✅ Initialization complete - all event listeners attached');
             
             // Test: Verify elements are accessible
             if (sendButton) {
@@ -1402,6 +1428,11 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
             console.log('🔄 Trying to initialize...');
             try {
                 initialize();
+                // If initialization didn't complete (elements not found), retry
+                if (!initialized) {
+                    console.log('⏳ Initialization incomplete, will retry...');
+                    setTimeout(tryInitialize, 200);
+                }
             } catch (error) {
                 console.error('❌ Initialization error:', error);
                 // Retry after a delay
@@ -1423,9 +1454,34 @@ Elemezd a fájlt, magyarázd el, mit csinál, és adj javaslatokat.`;
         // Also try after short delays (webview might need more time)
         setTimeout(tryInitialize, 100);
         setTimeout(tryInitialize, 300);
+        setTimeout(tryInitialize, 500);
         
         // Also try when window loads
         window.addEventListener('load', tryInitialize);
+        
+        // Use MutationObserver to watch for when elements become available
+        const observer = new MutationObserver(() => {
+            if (!initialized) {
+                console.log('👀 DOM changed, trying to initialize...');
+                tryInitialize();
+            }
+        });
+        
+        // Start observing the document body for changes
+        if (document.body) {
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        } else {
+            // If body doesn't exist yet, wait for it
+            document.addEventListener('DOMContentLoaded', () => {
+                observer.observe(document.body, {
+                    childList: true,
+                    subtree: true
+                });
+            });
+        }
 
         window.addEventListener('message', event => {
             const message = event.data;
