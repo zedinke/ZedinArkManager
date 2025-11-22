@@ -126,6 +126,44 @@ def register_server_as_node():
 # Szerver regisztrálása indításkor
 server_node = register_server_as_node()
 
+# Distributed network statisztikák kiírása indításkor
+def print_distributed_network_info():
+    """Kiírja a distributed network információkat indításkor"""
+    try:
+        stats = distributed_network.get_network_stats()
+        available_nodes = distributed_network.get_available_nodes(ignore_model_filter=True)
+        
+        print("\n" + "="*60)
+        print("🌐 DISTRIBUTED COMPUTING NETWORK")
+        print("="*60)
+        print(f"📊 Összes regisztrált csomópont: {stats['total_nodes']}")
+        print(f"✅ Online csomópontok: {stats['online_nodes']}")
+        print(f"💻 Összes GPU: {stats['total_gpu']}")
+        print(f"🧠 Összes GPU memória: {stats['total_gpu_memory_gb']:.2f} GB")
+        print(f"⚙️  Összes CPU mag: {stats['total_cpu_cores']}")
+        print(f"🔄 Aktív feladatok: {stats['active_tasks']}")
+        print(f"✅ Befejezett feladatok: {stats['completed_tasks']}")
+        print("-"*60)
+        
+        if available_nodes:
+            print(f"🚀 Egy kérés {len(available_nodes)} csomóponton lesz futtatva:")
+            for i, node in enumerate(available_nodes, 1):
+                models_info = f"{len(node.available_models)} modell" if node.available_models else "modell info nélkül"
+                print(f"   {i}. {node.name}")
+                print(f"      - ID: {node.node_id}")
+                print(f"      - GPU: {node.gpu_count}, CPU: {node.cpu_cores}, {models_info}")
+                print(f"      - Terhelés: {node.current_load*100:.1f}%, Válaszidő: {node.response_time:.0f}ms")
+        else:
+            print("⚠️  Nincs elérhető csomópont a distributed computing-hez")
+            print("   (A kérések lokálisan lesznek feldolgozva)")
+        
+        print("="*60 + "\n")
+    except Exception as e:
+        logger.warning(f"Failed to print distributed network info: {e}")
+
+# Network info kiírása indításkor
+print_distributed_network_info()
+
 # FastAPI app
 app = FastAPI(
     title="AI Coding Assistant",
@@ -990,6 +1028,9 @@ if __name__ == "__main__":
     # Kikapcsolás: python main.py --no-reload
     # Vagy környezeti változóval: export RELOAD=false
     use_reload = os.getenv("RELOAD", "false").lower() == "true" and "--no-reload" not in sys.argv
+    
+    # Network info kiírása szerver indítás előtt
+    print_distributed_network_info()
     
     # Uvicorn konfiguráció reload warning elkerülésére
     if use_reload:
