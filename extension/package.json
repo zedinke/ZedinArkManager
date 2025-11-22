@@ -95,6 +95,21 @@
     "configuration": {
       "title": "ZedinArk Manager",
       "properties": {
+        "zedinark.useLocalOllama": {
+          "type": "boolean",
+          "default": false,
+          "description": "Csak lokális Ollama-t használ (kikapcsolja a távoli szervert). Ha be van kapcsolva, a VS Code extension csak a localhost:11434-re hív."
+        },
+        "zedinark.useHybridMode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hibrid mód: egyszerre használja a lokális GPU-t ÉS a távoli szervert. Intelligens load balancing: ha a modell lokálisan elérhető, akkor a saját GPU-dat használja (70%), különben a távoli szervert (30%)."
+        },
+        "zedinark.localOllamaUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Lokális Ollama API URL (általában http://localhost:11434)"
+        },
         "zedinark.apiUrl": {
           "type": "string",
           "default": "http://135.181.165.27:8000",

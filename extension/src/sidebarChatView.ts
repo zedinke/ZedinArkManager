@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ZedinArkAPI } from './api';
+import { LocalOllamaAPI } from './localOllamaAPI';
 
 interface Model {
     id: string;
@@ -18,16 +19,48 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'zedinarkChatView';
     private _view?: vscode.WebviewView;
     private api: ZedinArkAPI;
+    private localOllama?: LocalOllamaAPI;
+    private useLocalOllama: boolean = false;
+    private useHybridMode: boolean = false; // Mindkét erőforrást használja
     private currentModel: string = 'default';
     private availableModels: string[] = [];
+    private localModels: string[] = [];
+    private remoteModels: string[] = [];
     private conversationHistory: Array<{role: string, content: string}> = [];
+    private requestCounter: number = 0; // Load balancing számoló
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
         api: ZedinArkAPI
     ) {
         this.api = api;
+        this.initializeLocalOllama();
         this.loadModels();
+    }
+
+    private async initializeLocalOllama() {
+        const config = vscode.workspace.getConfiguration('zedinark');
+        const useLocal = config.get<boolean>('useLocalOllama', false);
+        const useHybrid = config.get<boolean>('useHybridMode', true); // Alapértelmezetten hibrid mód
+        const localOllamaUrl = config.get<string>('localOllamaUrl', 'http://localhost:11434');
+        
+        this.useHybridMode = useHybrid;
+        
+        // Mindig inicializáljuk a lokális Ollama-t, ha elérhető
+        this.localOllama = new LocalOllamaAPI(localOllamaUrl);
+        const isAvailable = await this.localOllama.checkConnection();
+        
+        if (isAvailable) {
+            this.useLocalOllama = true;
+            console.log('Local Ollama API available');
+        } else {
+            console.warn('Local Ollama not available');
+            this.useLocalOllama = false;
+        }
+        
+        if (this.useHybridMode && this.useLocalOllama) {
+            console.log('Hybrid mode enabled: using both local GPU and remote server');
+        }
     }
 
     public resolveWebviewView(
@@ -66,7 +99,37 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
 
     private async loadModels() {
         try {
-            this.availableModels = await this.api.listModels();
+            const allModels: Array<{id: string, name: string, provider: string}> = [];
+            
+            // Lokális modellek betöltése
+            if (this.useLocalOllama && this.localOllama) {
+                try {
+                    this.localModels = await this.localOllama.listModels();
+                    this.localModels.forEach(model => {
+                        allModels.push({ id: model, name: model, provider: 'local-gpu' });
+                    });
+                } catch (error: any) {
+                    console.warn('Failed to load local models:', error);
+                    this.localModels = [];
+                }
+            }
+            
+            // Távoli modellek betöltése
+            try {
+                this.remoteModels = await this.api.listModels();
+                this.remoteModels.forEach(model => {
+                    // Ha már nincs benne (duplikáció elkerülése)
+                    if (!allModels.find(m => m.id === model)) {
+                        allModels.push({ id: model, name: model, provider: 'remote-server' });
+                    }
+                });
+            } catch (error: any) {
+                console.warn('Failed to load remote models:', error);
+                this.remoteModels = [];
+            }
+            
+            // Összes modell egyesítése
+            this.availableModels = allModels.map(m => m.id);
             
             // Ha van modell és még nincs kiválasztva, vagy 'default' a jelenlegi
             if (this.availableModels.length > 0) {
@@ -81,7 +144,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             if (this._view) {
                 this._view.webview.postMessage({
                     command: 'modelsLoaded',
-                    models: this.availableModels.map(id => ({ id, name: id, provider: 'ollama' })),
+                    models: allModels,
                     currentModel: this.currentModel
                 });
             }
@@ -145,8 +208,26 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             // Hozzáadjuk a felhasználó üzenetét a történethez
             this.conversationHistory.push({ role: 'user', content: text });
 
-            // API hívás történettel - csak akkor küldjük a modellt, ha van
-            const response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
+            // Intelligens erőforrás választás
+            let response: string;
+            const useLocal = this.shouldUseLocal(selectedModel);
+            
+            if (useLocal && this.useLocalOllama && this.localOllama) {
+                // Lokális Ollama használata (saját GPU)
+                try {
+                    response = await this.localOllama.chatWithHistory(this.conversationHistory, selectedModel);
+                    console.log('Response from local GPU');
+                } catch (localError: any) {
+                    // Ha lokális hiba, fallback távoli szerverre
+                    console.warn('Local Ollama failed, falling back to remote:', localError.message);
+                    response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
+                    console.log('Response from remote server (fallback)');
+                }
+            } else {
+                // Távoli API használata
+                response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
+                console.log('Response from remote server');
+            }
 
             // Hozzáadjuk az AI válaszát a történethez
             this.conversationHistory.push({ role: 'assistant', content: response });
@@ -170,6 +251,35 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 loading: false
             });
         }
+    }
+
+    /**
+     * Intelligens döntés: melyik erőforrást használja
+     * - Ha hibrid mód be van kapcsolva: váltakozva használja mindkettőt (load balancing)
+     * - Ha a modell lokálisan elérhető: lokális GPU-t használ
+     * - Ha csak távoli: távoli szervert használ
+     */
+    private shouldUseLocal(model: string): boolean {
+        const config = vscode.workspace.getConfiguration('zedinark');
+        const useLocalOnly = config.get<boolean>('useLocalOllama', false);
+        
+        // Ha csak lokális mód be van kapcsolva
+        if (useLocalOnly) {
+            return this.localModels.includes(model);
+        }
+        
+        // Hibrid mód: intelligens választás
+        if (this.useHybridMode && this.useLocalOllama) {
+            // Ha a modell lokálisan elérhető, akkor lokális GPU-t használ
+            if (this.localModels.includes(model)) {
+                // Load balancing: váltakozva használja (70% lokális, 30% távoli)
+                this.requestCounter++;
+                return (this.requestCounter % 10) < 7; // 7/10 esetben lokális
+            }
+        }
+        
+        // Alapértelmezett: távoli szerver
+        return false;
     }
 
     private parseAndDisplayResponse(response: string) {
