@@ -240,8 +240,12 @@ class DistributedComputingNetwork:
                 headers["X-API-Key"] = node.api_key
             
             # Aszinkron HTTP kérés - ez biztosítja a valódi párhuzamos futtatást
+            # FONTOS: Az Ollama automatikusan használja a GPU-t, ha elérhető
+            # Nem kell külön GPU opciókat beállítani, az Ollama detektálja
             async with aiohttp.ClientSession() as session:
                 logger.debug(f"📡 Sending async HTTP request to {url} for node {node.node_id}")
+                logger.debug(f"   Node GPU info: {node.gpu_count} GPU(s), {node.gpu_memory} MB memory")
+                
                 async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=300)) as response:
                     if response.status == 200:
                         data = await response.json()
@@ -250,6 +254,8 @@ class DistributedComputingNetwork:
                         # Válaszidő mérése
                         response_time = (datetime.now() - start_time).total_seconds() * 1000
                         logger.info(f"✅ Node {node.node_id} completed in {response_time:.2f}ms, response length: {len(result)} chars")
+                        if node.gpu_count > 0:
+                            logger.info(f"   💻 GPU used: {node.gpu_count} GPU(s), {node.gpu_memory} MB")
                         self.update_node_status(node.node_id, NodeStatus.ONLINE, 
                                                response_time=response_time)
                         

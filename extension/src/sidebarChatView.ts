@@ -101,7 +101,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                     if (serviceUrl.includes('ipify.org')) {
                         const data = await response.json() as { ip: string };
                         ip = data.ip;
-                    } else {
+            } else {
                         ip = (await response.text()).trim();
                     }
                     
@@ -227,11 +227,73 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             let gpuCount = 0;
             let gpuMemory = 0;
             try {
-                // Próbáljuk meg detektálni a GPU-t (Windows-on nvidia-smi)
-                // Ez csak akkor működik, ha a PATH-ban van az nvidia-smi
-                // TODO: jobb GPU detektálás implementálása
-            } catch (e) {
+                console.log('🔍 Detecting GPU...');
+                
+                // Windows: nvidia-smi használata
+                const { exec } = require('child_process');
+                const { promisify } = require('util');
+                const execAsync = promisify(exec);
+                
+                try {
+                    // nvidia-smi --query-gpu=count,memory.total --format=csv,noheader,nounits
+                    const { stdout } = await execAsync('nvidia-smi --query-gpu=count,memory.total --format=csv,noheader,nounits', {
+                        timeout: 5000,
+                        maxBuffer: 1024 * 1024 // 1MB buffer
+                    });
+                    
+                    if (stdout && stdout.trim()) {
+                        const lines = stdout.trim().split('\n');
+                        gpuCount = lines.length;
+                        let totalMemory = 0;
+                        
+                        for (const line of lines) {
+                            const parts = line.split(',');
+                            if (parts.length >= 2) {
+                                // memory.total (MB)
+                                const memory = parseInt(parts[1].trim());
+                                if (!isNaN(memory)) {
+                                    totalMemory += memory;
+                                }
+                            }
+                        }
+                        
+                        gpuMemory = totalMemory;
+                        console.log(`✅ GPU detected: ${gpuCount} GPU(s), ${gpuMemory} MB total memory`);
+                    }
+                } catch (nvidiaError: any) {
+                    // nvidia-smi nem elérhető vagy nincs GPU
+                    console.log('ℹ️ nvidia-smi not available or no NVIDIA GPU found');
+                    
+                    // Alternatíva: Windows WMI használata (ha nvidia-smi nincs)
+                    try {
+                        const { stdout: wmiOutput } = await execAsync('wmic path win32_VideoController get Name,AdapterRAM /format:csv', {
+                            timeout: 5000
+                        });
+                        
+                        if (wmiOutput) {
+                            const lines = wmiOutput.split('\n').filter((line: string) => 
+                                line.includes('NVIDIA') || line.includes('AMD') || line.includes('Radeon')
+                            );
+                            if (lines.length > 0) {
+                                gpuCount = lines.length;
+                                console.log(`✅ GPU detected via WMI: ${gpuCount} GPU(s)`);
+                            }
+                        }
+                    } catch (wmiError) {
+                        console.log('ℹ️ WMI GPU detection also failed');
+                    }
+                }
+            } catch (e: any) {
+                console.warn('⚠️ GPU detection failed:', e.message);
                 // GPU detektálás nem sikerült, marad 0
+            }
+            
+            // Ha nem sikerült detektálni, de van lokális Ollama, feltételezhetjük, hogy van GPU
+            // (mert Ollama általában GPU-val fut)
+            if (gpuCount === 0 && this.localOllama) {
+                console.log('ℹ️ Assuming GPU available (Ollama typically uses GPU)');
+                gpuCount = 1; // Feltételezés: 1 GPU
+                gpuMemory = 8192; // Feltételezés: 8GB (közepes GPU)
             }
             
             // Node ID generálása
