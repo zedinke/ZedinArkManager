@@ -1,16 +1,33 @@
 import * as vscode from 'vscode';
 import { ZedinArkAPI } from './api';
 
+interface Model {
+    id: string;
+    name: string;
+    provider: string;
+}
+
+interface TodoItem {
+    id: string;
+    task: string;
+    priority: 'high' | 'medium' | 'low';
+    completed: boolean;
+}
+
 export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'zedinarkChatView';
     private _view?: vscode.WebviewView;
     private api: ZedinArkAPI;
+    private currentModel: string = 'default';
+    private availableModels: string[] = [];
+    private conversationHistory: Array<{role: string, content: string}> = [];
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
         api: ZedinArkAPI
     ) {
         this.api = api;
+        this.loadModels();
     }
 
     public resolveWebviewView(
@@ -30,14 +47,60 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (message) => {
             switch (message.command) {
                 case 'sendMessage':
-                    await this.handleMessage(message.text);
+                    await this.handleMessage(message.text, message.model);
+                    break;
+                case 'loadModels':
+                    await this.loadModels();
+                    break;
+                case 'switchModel':
+                    this.currentModel = message.model;
+                    this.updateModel();
+                    break;
+                case 'clearChat':
+                    this.conversationHistory = [];
+                    this._view?.webview.postMessage({ command: 'chatCleared' });
                     break;
             }
         });
     }
 
-    private async handleMessage(text: string) {
+    private async loadModels() {
+        try {
+            this.availableModels = await this.api.listModels();
+            if (this.availableModels.length > 0 && this.currentModel === 'default') {
+                this.currentModel = this.availableModels[0];
+            }
+            if (this._view) {
+                this._view.webview.postMessage({
+                    command: 'modelsLoaded',
+                    models: this.availableModels.map(id => ({ id, name: id, provider: 'ollama' })),
+                    currentModel: this.currentModel
+                });
+            }
+        } catch (error: any) {
+            console.error('Failed to load models:', error);
+            if (this._view) {
+                this._view.webview.postMessage({
+                    command: 'error',
+                    error: 'Nem sikerült betölteni a modelleket'
+                });
+            }
+        }
+    }
+
+    private updateModel() {
+        if (this._view) {
+            this._view.webview.postMessage({
+                command: 'modelChanged',
+                model: this.currentModel
+            });
+        }
+    }
+
+    private async handleMessage(text: string, model?: string) {
         if (!this._view) return;
+
+        const selectedModel = model || this.currentModel;
 
         try {
             this._view.webview.postMessage({
@@ -45,12 +108,18 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 loading: true
             });
 
-            const response = await this.api.chat(text);
+            // Hozzáadjuk a felhasználó üzenetét a történethez
+            this.conversationHistory.push({ role: 'user', content: text });
 
-            this._view.webview.postMessage({
-                command: 'receiveMessage',
-                response: response
-            });
+            // API hívás történettel
+            const response = await this.api.chatWithHistory(this.conversationHistory, selectedModel);
+
+            // Hozzáadjuk az AI válaszát a történethez
+            this.conversationHistory.push({ role: 'assistant', content: response });
+
+            // Parsoljuk a választ és küldjük a különböző komponenseknek
+            this.parseAndDisplayResponse(response);
+
         } catch (error: any) {
             this._view.webview.postMessage({
                 command: 'error',
@@ -62,6 +131,134 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 loading: false
             });
         }
+    }
+
+    private parseAndDisplayResponse(response: string) {
+        if (!this._view) return;
+        const view = this._view;
+
+        // Thinking/Reflection kinyerése
+        const thinkingMatch = response.match(/<thinking>([\s\S]*?)<\/thinking>/i);
+        if (thinkingMatch) {
+            view.webview.postMessage({
+                command: 'thinking',
+                content: thinkingMatch[1].trim()
+            });
+        }
+
+        // Plan kinyerése
+        const planMatch = response.match(/<plan>([\s\S]*?)<\/plan>/i);
+        if (planMatch) {
+            view.webview.postMessage({
+                command: 'plan',
+                content: planMatch[1].trim()
+            });
+        }
+
+        // Todo lista kinyerése
+        const todoMatch = response.match(/<todo>([\s\S]*?)<\/todo>/i);
+        if (todoMatch) {
+            const todoText = todoMatch[1].trim();
+            const todos = this.parseTodoList(todoText);
+            if (todos.length > 0) {
+                view.webview.postMessage({
+                    command: 'todoList',
+                    todos: todos
+                });
+            }
+        }
+
+        // Code snippets kinyerése
+        const codeBlocks = response.match(/```(\w+)?\n?([\s\S]*?)```/g);
+        if (codeBlocks) {
+            codeBlocks.forEach(block => {
+                const match = block.match(/```(\w+)?\n?([\s\S]*?)```/);
+                if (match) {
+                    const language = match[1] || 'text';
+                    const code = match[2].trim();
+                    view.webview.postMessage({
+                        command: 'codeSnippet',
+                        code: code,
+                        language: language
+                    });
+                }
+            });
+        }
+
+        // Feedback kinyerése
+        const feedbackMatches = response.match(/<feedback type="(\w+)">([\s\S]*?)<\/feedback>/gi);
+        if (feedbackMatches) {
+            feedbackMatches.forEach(feedback => {
+                const match = feedback.match(/<feedback type="(\w+)">([\s\S]*?)<\/feedback>/i);
+                if (match) {
+                    const type = match[1] as 'info' | 'success' | 'warning' | 'error';
+                    const content = match[2].trim();
+                    view.webview.postMessage({
+                        command: 'feedback',
+                        type: type,
+                        content: content
+                    });
+                }
+            });
+        }
+
+        // Végül a teljes válasz megjelenítése (thinking, plan, todo, feedback nélkül)
+        let cleanResponse = response
+            .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+            .replace(/<plan>[\s\S]*?<\/plan>/gi, '')
+            .replace(/<todo>[\s\S]*?<\/todo>/gi, '')
+            .replace(/<feedback[^>]*>[\s\S]*?<\/feedback>/gi, '')
+            .trim();
+
+        if (cleanResponse) {
+            view.webview.postMessage({
+                command: 'receiveMessage',
+                response: cleanResponse
+            });
+        }
+    }
+
+    private parseTodoList(todoText: string): TodoItem[] {
+        const todos: TodoItem[] = [];
+        const lines = todoText.split('\n').filter(line => line.trim());
+        
+        lines.forEach((line, index) => {
+            const trimmed = line.trim();
+            if (trimmed) {
+                // Priorítás detektálása
+                let priority: 'high' | 'medium' | 'low' = 'medium';
+                if (trimmed.toLowerCase().includes('[high]') || trimmed.toLowerCase().includes('!!!')) {
+                    priority = 'high';
+                } else if (trimmed.toLowerCase().includes('[low]') || trimmed.toLowerCase().includes('?')) {
+                    priority = 'low';
+                }
+
+                // Completed detektálása
+                const completed = trimmed.startsWith('[x]') || trimmed.startsWith('[X]') || trimmed.startsWith('✓');
+
+                // Task szöveg tisztítása
+                let task = trimmed
+                    .replace(/^[-*]\s*/, '')
+                    .replace(/^\[x\]\s*/i, '')
+                    .replace(/^\[X\]\s*/, '')
+                    .replace(/^✓\s*/, '')
+                    .replace(/\[high\]/gi, '')
+                    .replace(/\[medium\]/gi, '')
+                    .replace(/\[low\]/gi, '')
+                    .replace(/!!!/, '')
+                    .replace(/\?/, '')
+                    .trim();
+
+                todos.push({
+                    id: `todo-${index}`,
+                    task: task,
+                    priority: priority,
+                    completed: completed
+                });
+            }
+        });
+
+        return todos;
     }
 
     private _getHtmlForWebview(webview: vscode.Webview): string {
@@ -92,6 +289,33 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             font-weight: 600;
             font-size: 14px;
             margin-bottom: 8px;
+        }
+        .controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .model-select {
+            flex: 1;
+            padding: 6px 8px;
+            border: 1px solid var(--vscode-dropdown-border);
+            background: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .control-btn {
+            padding: 6px 10px;
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            border: 1px solid var(--vscode-button-border);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .control-btn:hover {
+            opacity: 0.9;
         }
         .messages {
             flex: 1;
@@ -137,6 +361,169 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
         .message-content code {
             font-family: var(--vscode-editor-font-family);
             font-size: 12px;
+        }
+        .thinking-container {
+            display: flex;
+            gap: 8px;
+            padding: 10px;
+            background: var(--vscode-textBlockQuote-background);
+            border-left: 3px solid var(--vscode-textLink-foreground);
+            border-radius: 4px;
+            margin: 8px 0;
+        }
+        .thinking-icon {
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .thinking-content {
+            flex: 1;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+            font-style: italic;
+        }
+        .plan-container {
+            background: var(--vscode-textBlockQuote-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            margin: 8px 0;
+            overflow: hidden;
+        }
+        .plan-header {
+            padding: 8px 12px;
+            background: var(--vscode-sideBar-background);
+            border-bottom: 1px solid var(--vscode-panel-border);
+            font-weight: 600;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .plan-content {
+            padding: 12px;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        .todo-container {
+            background: var(--vscode-textBlockQuote-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            margin: 8px 0;
+            overflow: hidden;
+        }
+        .todo-header {
+            padding: 8px 12px;
+            background: var(--vscode-sideBar-background);
+            border-bottom: 1px solid var(--vscode-panel-border);
+            font-weight: 600;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .todo-list {
+            padding: 8px;
+        }
+        .todo-item {
+            padding: 6px 8px;
+            margin: 4px 0;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+        .todo-item.high {
+            background: rgba(255, 100, 100, 0.1);
+            border-left: 3px solid #ff6464;
+        }
+        .todo-item.medium {
+            background: rgba(255, 200, 0, 0.1);
+            border-left: 3px solid #ffc800;
+        }
+        .todo-item.low {
+            background: rgba(100, 200, 255, 0.1);
+            border-left: 3px solid #64c8ff;
+        }
+        .todo-item.completed {
+            opacity: 0.6;
+            text-decoration: line-through;
+        }
+        .todo-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        .todo-priority {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        .todo-priority.high { background: #ff6464; color: white; }
+        .todo-priority.medium { background: #ffc800; color: #333; }
+        .todo-priority.low { background: #64c8ff; color: #333; }
+        .feedback {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: 6px;
+            margin: 8px 0;
+            font-size: 12px;
+        }
+        .feedback-info {
+            background: rgba(100, 150, 255, 0.15);
+            border-left: 3px solid #6496ff;
+        }
+        .feedback-success {
+            background: rgba(100, 200, 100, 0.15);
+            border-left: 3px solid #64c864;
+        }
+        .feedback-warning {
+            background: rgba(255, 200, 0, 0.15);
+            border-left: 3px solid #ffc800;
+        }
+        .feedback-error {
+            background: rgba(255, 100, 100, 0.15);
+            border-left: 3px solid #ff6464;
+        }
+        .feedback-icon {
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .code-snippet-container {
+            background: var(--vscode-textCodeBlock-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            margin: 8px 0;
+            overflow: hidden;
+        }
+        .code-snippet-header {
+            padding: 6px 10px;
+            background: var(--vscode-sideBar-background);
+            border-bottom: 1px solid var(--vscode-panel-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+        }
+        .code-file {
+            font-weight: 600;
+            color: var(--vscode-textLink-foreground);
+        }
+        .code-lang {
+            padding: 2px 6px;
+            background: var(--vscode-textCodeBlock-background);
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .code-snippet-container pre {
+            margin: 0;
+            padding: 12px;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
         }
         .input-area {
             padding: 12px;
@@ -193,6 +580,13 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
 <body>
     <div class="header">
         <div class="header-title">ZedinArk AI Chat</div>
+        <div class="controls">
+            <select id="modelSelect" class="model-select">
+                <option value="">Modellek betöltése...</option>
+            </select>
+            <button id="refreshBtn" class="control-btn" type="button" title="Modellek frissítése">🔄</button>
+            <button id="clearBtn" class="control-btn" type="button" title="Chat törlése">🗑️</button>
+        </div>
     </div>
     <div class="messages" id="messages"></div>
     <div class="input-area">
@@ -207,6 +601,30 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
             const messages = document.getElementById('messages');
             const input = document.getElementById('messageInput');
             const sendBtn = document.getElementById('sendButton');
+            const modelSelect = document.getElementById('modelSelect');
+            const clearBtn = document.getElementById('clearBtn');
+            const refreshBtn = document.getElementById('refreshBtn');
+            let currentModel = 'default';
+
+            function escapeHtml(text) {
+                if (!text) return '';
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            function formatMarkdown(text) {
+                text = escapeHtml(text);
+                const backtick = String.fromCharCode(96);
+                const codeBlockPattern = backtick + backtick + backtick + '(\\w+)?\\n?([\\s\\S]*?)' + backtick + backtick + backtick;
+                text = text.replace(new RegExp(codeBlockPattern, 'g'), '<pre><code>$2</code></pre>');
+                const inlineCodePattern = backtick + '([^' + backtick + ']+)' + backtick;
+                text = text.replace(new RegExp(inlineCodePattern, 'g'), '<code>$1</code>');
+                text = text.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
+                text = text.replace(/\\*(.+?)\\*/g, '<em>$1</em>');
+                text = text.replace(/\\n/g, '<br>');
+                return text;
+            }
 
             function send() {
                 const text = input.value.trim();
@@ -216,7 +634,11 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 input.value = '';
                 sendBtn.disabled = true;
                 
-                vscode.postMessage({ command: 'sendMessage', text: text });
+                vscode.postMessage({ 
+                    command: 'sendMessage', 
+                    text: text,
+                    model: currentModel
+                });
             }
 
             function addMessage(role, text) {
@@ -224,17 +646,61 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                 div.className = 'message ' + role;
                 const content = document.createElement('div');
                 content.className = 'message-content';
-                
-                text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const backtick = String.fromCharCode(96);
-                const codeBlockPattern = backtick + backtick + backtick + '([\\s\\S]*?)' + backtick + backtick + backtick;
-                text = text.replace(new RegExp(codeBlockPattern, 'g'), '<pre><code>$1</code></pre>');
-                const inlineCodePattern = backtick + '([^' + backtick + ']+)' + backtick;
-                text = text.replace(new RegExp(inlineCodePattern, 'g'), '<code>$1</code>');
-                text = text.replace(/\\n/g, '<br>');
-                
-                content.innerHTML = text;
+                content.innerHTML = formatMarkdown(text);
                 div.appendChild(content);
+                messages.appendChild(div);
+                messages.scrollTop = messages.scrollHeight;
+            }
+
+            function addThinking(content) {
+                const div = document.createElement('div');
+                div.className = 'thinking-container';
+                div.innerHTML = '<div class="thinking-icon">💭</div><div class="thinking-content">' + escapeHtml(content) + '</div>';
+                messages.appendChild(div);
+                messages.scrollTop = messages.scrollHeight;
+            }
+
+            function addPlan(content) {
+                const div = document.createElement('div');
+                div.className = 'plan-container';
+                div.innerHTML = '<div class="plan-header">📋 Terv</div><div class="plan-content">' + formatMarkdown(content) + '</div>';
+                messages.appendChild(div);
+                messages.scrollTop = messages.scrollHeight;
+            }
+
+            function addTodoList(todos) {
+                const div = document.createElement('div');
+                div.className = 'todo-container';
+                let html = '<div class="todo-header">📝 To-Do Lista</div><div class="todo-list">';
+                todos.forEach(function(todo) {
+                    const priorityClass = todo.priority || 'medium';
+                    const completedClass = todo.completed ? 'completed' : '';
+                    const priorityLabel = priorityClass === 'high' ? 'HIGH' : priorityClass === 'medium' ? 'MED' : 'LOW';
+                    html += '<div class="todo-item ' + priorityClass + ' ' + completedClass + '">';
+                    html += '<span class="todo-priority ' + priorityClass + '">' + priorityLabel + '</span>';
+                    html += '<span>' + escapeHtml(todo.task) + '</span>';
+                    html += '</div>';
+                });
+                html += '</div>';
+                div.innerHTML = html;
+                messages.appendChild(div);
+                messages.scrollTop = messages.scrollHeight;
+            }
+
+            function addFeedback(content, type) {
+                const div = document.createElement('div');
+                div.className = 'feedback feedback-' + type;
+                const icons = { info: 'ℹ️', success: '✅', warning: '⚠️', error: '❌' };
+                div.innerHTML = '<span class="feedback-icon">' + (icons[type] || 'ℹ️') + '</span><span>' + escapeHtml(content) + '</span>';
+                messages.appendChild(div);
+                messages.scrollTop = messages.scrollHeight;
+            }
+
+            function addCodeSnippet(code, language, filePath) {
+                const div = document.createElement('div');
+                div.className = 'code-snippet-container';
+                const header = filePath ? '<div class="code-snippet-header"><span class="code-file">📄 ' + escapeHtml(filePath) + '</span><span class="code-lang">' + escapeHtml(language) + '</span></div>' : '<div class="code-snippet-header"><span class="code-lang">' + escapeHtml(language) + '</span></div>';
+                div.innerHTML = header + '<pre><code>' + escapeHtml(code) + '</code></pre>';
                 messages.appendChild(div);
                 messages.scrollTop = messages.scrollHeight;
             }
@@ -246,6 +712,22 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                     send();
                 }
             };
+            input.oninput = function() {
+                input.style.height = '40px';
+                input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+            };
+            modelSelect.onchange = function() {
+                currentModel = modelSelect.value;
+                vscode.postMessage({ command: 'switchModel', model: currentModel });
+            };
+            clearBtn.onclick = function() {
+                if (confirm('Biztosan törölni szeretnéd a chat történetet?')) {
+                    vscode.postMessage({ command: 'clearChat' });
+                }
+            };
+            refreshBtn.onclick = function() {
+                vscode.postMessage({ command: 'loadModels' });
+            };
 
             window.addEventListener('message', function(e) {
                 const msg = e.data;
@@ -254,7 +736,7 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                     sendBtn.disabled = false;
                     input.focus();
                 } else if (msg.command === 'error') {
-                    addMessage('assistant', 'Hiba: ' + msg.error);
+                    addFeedback('Hiba: ' + msg.error, 'error');
                     sendBtn.disabled = false;
                     input.focus();
                 } else if (msg.command === 'loading') {
@@ -268,6 +750,40 @@ export class SidebarChatViewProvider implements vscode.WebviewViewProvider {
                         const loading = document.getElementById('loading');
                         if (loading) loading.remove();
                     }
+                } else if (msg.command === 'modelsLoaded') {
+                    modelSelect.innerHTML = '';
+                    if (msg.models && msg.models.length > 0) {
+                        msg.models.forEach(function(m) {
+                            const option = document.createElement('option');
+                            option.value = m.id;
+                            option.textContent = m.name + (m.provider ? ' (' + m.provider + ')' : '');
+                            if (m.id === msg.currentModel) {
+                                option.selected = true;
+                                currentModel = m.id;
+                            }
+                            modelSelect.appendChild(option);
+                        });
+                    } else {
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = 'Nincs elérhető modell';
+                        modelSelect.appendChild(option);
+                    }
+                } else if (msg.command === 'modelChanged') {
+                    currentModel = msg.model;
+                    modelSelect.value = msg.model;
+                } else if (msg.command === 'chatCleared') {
+                    messages.innerHTML = '';
+                } else if (msg.command === 'thinking') {
+                    addThinking(msg.content);
+                } else if (msg.command === 'plan') {
+                    addPlan(msg.content);
+                } else if (msg.command === 'todoList') {
+                    addTodoList(msg.todos);
+                } else if (msg.command === 'feedback') {
+                    addFeedback(msg.content, msg.type || 'info');
+                } else if (msg.command === 'codeSnippet') {
+                    addCodeSnippet(msg.code, msg.language, msg.filePath);
                 }
             });
         })();
