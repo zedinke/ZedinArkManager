@@ -5,6 +5,7 @@ Minden felhasználó erőforrásait (GPU, CPU) közösen használja a rendszer
 import asyncio
 import logging
 from typing import List, Dict, Optional, Tuple, Any
+import random
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from enum import Enum
@@ -73,6 +74,8 @@ class DistributedComputingNetwork:
         self.tasks: Dict[str, DistributedTask] = {}
         self.executor = ThreadPoolExecutor(max_workers=50)
         self.lock = asyncio.Lock()
+        # Connection pool optimalizáció: újrahasznosított HTTP session-ök
+        self._session_pool: Optional[aiohttp.ClientSession] = None
     
     def register_node(self, node_id: str, user_id: str, name: str, 
                      ollama_url: str, api_key: Optional[str] = None,
@@ -204,50 +207,96 @@ class DistributedComputingNetwork:
             )
             futures.append((node.node_id, future))
         
-        # Válaszok gyűjtése
+        # Válaszok gyűjtése - OPTIMALIZÁLT: első válasz visszaadása
         results = {}
         errors = {}
         
-        for node_id, future in futures:
+        # Ha csak egy node van, nincs szükség párhuzamos várakozásra
+        if len(futures) == 1:
+            node_id, future = futures[0]
             try:
                 result = await asyncio.wait_for(future, timeout=300)  # 5 perc timeout
                 results[node_id] = result
-                # Csomópont statisztika frissítése
                 if node_id in self.nodes:
                     self.nodes[node_id].total_requests += 1
                     self.nodes[node_id].successful_requests += 1
                 logger.info(f"✅ Node {node_id} responded successfully")
-            except asyncio.TimeoutError:
-                errors[node_id] = "Timeout (300s)"
-                logger.warning(f"⏱️ Node {node_id} timeout: No response within 300 seconds")
+                task.results = results
+                task.status = "completed"
+                task.completed_at = datetime.now()
+                return result  # Azonnal visszaadjuk, nincs szükség kombinálásra
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"❌ Node {node_id} error: {error_msg}")
+                raise Exception(f"Node {node_id} failed: {error_msg}")
+        
+        # Több node esetén: első válasz visszaadása (gyorsabb)
+        # Vagy mindkét válasz kombinálása, ha mindkettő sikeres
+        done, pending = await asyncio.wait(futures, return_when=asyncio.FIRST_COMPLETED)
+        
+        # Első sikeres válasz feldolgozása
+        first_result = None
+        first_node_id = None
+        
+        for completed in done:
+            node_id, future = [(nid, f) for nid, f in futures if f == completed][0]
+            try:
+                result = await future
+                results[node_id] = result
+                first_result = result
+                first_node_id = node_id
                 if node_id in self.nodes:
                     self.nodes[node_id].total_requests += 1
-                    # Ne állítsuk ERROR-ra, csak timeout-ot jelöljük (később újra próbálhatjuk)
-                    self.update_node_status(node_id, NodeStatus.BUSY)
+                    self.nodes[node_id].successful_requests += 1
+                logger.info(f"✅ Node {node_id} responded successfully (first)")
+                break
             except Exception as e:
                 error_msg = str(e)
                 errors[node_id] = error_msg
-                logger.error(f"❌ Node {node_id} error: {error_msg}")
-                if node_id in self.nodes:
-                    self.nodes[node_id].total_requests += 1
-                    # Csak akkor állítsuk ERROR-ra, ha valódi hiba van (nem timeout)
-                    if "timeout" not in error_msg.lower() and "connection" not in error_msg.lower():
-                        self.update_node_status(node_id, NodeStatus.ERROR)
+                logger.warning(f"⚠️ Node {node_id} error: {error_msg}")
+        
+        # Várakozás a többi node-ra (ha van), de nem blokkoljuk a választ
+        if pending:
+            # Várakozás a többi node-ra (max 5 másodperc, hogy ne lassítsa)
+            remaining_futures = [(nid, f) for nid, f in futures if f in pending]
+            for node_id, future in remaining_futures:
+                try:
+                    result = await asyncio.wait_for(future, timeout=5)  # Rövidebb timeout a kombináláshoz
+                    results[node_id] = result
+                    if node_id in self.nodes:
+                        self.nodes[node_id].total_requests += 1
+                        self.nodes[node_id].successful_requests += 1
+                    logger.info(f"✅ Node {node_id} responded successfully (additional)")
+                except asyncio.TimeoutError:
+                    errors[node_id] = "Timeout (additional response)"
+                    logger.debug(f"⏱️ Node {node_id} timeout (additional, not critical)")
+                    if node_id in self.nodes:
+                        self.nodes[node_id].total_requests += 1
+                except Exception as e:
+                    error_msg = str(e)
+                    errors[node_id] = error_msg
+                    logger.debug(f"⚠️ Node {node_id} error (additional): {error_msg}")
+                    if node_id in self.nodes:
+                        self.nodes[node_id].total_requests += 1
         
         task.results = results
         task.status = "completed" if results else "failed"
         task.completed_at = datetime.now()
         
-        # Válaszok kombinálása
+        # Válasz visszaadása
         if results:
-            combined_response = self._combine_responses(list(results.values()))
-            logger.info(f"Task {task_id} completed: {len(results)}/{len(available_nodes)} successful")
-            if errors:
-                failed_nodes = list(errors.keys())
-                logger.warning(f"⚠️ Some nodes failed ({len(errors)}/{len(available_nodes)}): {failed_nodes}")
-                for node_id, error_msg in errors.items():
-                    logger.warning(f"   - {node_id}: {error_msg}")
-            return combined_response
+            # Ha több válasz van, kombináljuk, különben az elsőt használjuk
+            if len(results) > 1:
+                combined_response = self._combine_responses(list(results.values()))
+                logger.info(f"Task {task_id} completed: {len(results)}/{len(available_nodes)} successful (combined)")
+                if errors:
+                    failed_nodes = list(errors.keys())
+                    logger.debug(f"⚠️ Some nodes failed ({len(errors)}/{len(available_nodes)}): {failed_nodes}")
+                return combined_response
+            else:
+                # Csak egy válasz van, azonnal visszaadjuk
+                logger.info(f"Task {task_id} completed: {len(results)}/{len(available_nodes)} successful (single response)")
+                return first_result
         else:
             logger.error(f"❌ All nodes failed for task {task_id}: {errors}")
             raise Exception(f"All nodes failed: {errors}")

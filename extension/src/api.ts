@@ -8,11 +8,14 @@ export class ZedinArkAPI {
         this.apiKey = apiKey;
         this.client = axios.create({
             baseURL,
-            timeout: 60000, // 60 másodperc timeout
+            timeout: 300000, // 5 perc timeout (nagy modellek esetén)
             headers: {
                 'Content-Type': 'application/json',
                 ...(apiKey && { 'X-API-Key': apiKey })
-            }
+            },
+            // Optimalizáció: keep-alive kapcsolatok
+            httpAgent: new (require('http').Agent)({ keepAlive: true }),
+            httpsAgent: new (require('https').Agent)({ keepAlive: true })
         });
     }
 
