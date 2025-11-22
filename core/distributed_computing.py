@@ -131,8 +131,21 @@ class DistributedComputingNetwork:
             is_server_node = node.node_id.startswith('server-')
             
             # Ha nem szerver node és nem elérhető, kihagyjuk
-            if not is_server_node and not node.is_available():
-                continue
+            # DE: Ha BUSY státuszban van (nem ERROR), akkor is megpróbáljuk használni
+            # Ez lehetővé teszi, hogy a node-ok időnként offline legyenek, de ne távolítsuk el
+            if not is_server_node:
+                if node.status == NodeStatus.ERROR:
+                    # ERROR státuszban lévő node-ot kihagyjuk
+                    continue
+                elif not node.is_available():
+                    # Ha offline vagy túl régen volt aktív, de nem ERROR, akkor is megpróbáljuk
+                    # (lehet, hogy csak ideiglenesen nem elérhető)
+                    if node.status == NodeStatus.BUSY:
+                        # BUSY node-ot is megpróbáljuk (lehet, hogy most már elérhető)
+                        logger.debug(f"🔄 Attempting to use BUSY node: {node.node_id}")
+                    else:
+                        # Ha OFFLINE és régen volt aktív, kihagyjuk
+                        continue
             
             # Ha szerver node, akkor csak az ONLINE státuszt ellenőrizzük
             if is_server_node and node.status != NodeStatus.ONLINE:
@@ -253,6 +266,14 @@ class DistributedComputingNetwork:
             except Exception as e:
                 error_msg = str(e)
                 errors[node_id] = error_msg
+                # Ne állítsuk ERROR-ra azonnal, csak BUSY-ra (lehet, hogy ideiglenes probléma)
+                if node_id in self.nodes:
+                    # Csak akkor állítsuk ERROR-ra, ha valódi hiba van (nem timeout/connection)
+                    if "timeout" not in error_msg.lower() and "connection" not in error_msg.lower():
+                        self.update_node_status(node_id, NodeStatus.ERROR)
+                    else:
+                        # Timeout/connection hibák esetén csak BUSY-ra állítjuk
+                        self.update_node_status(node_id, NodeStatus.BUSY)
                 logger.warning(f"⚠️ Node {node_id} error: {error_msg}")
         
         # Várakozás a többi node-ra (ha van), de nem blokkoljuk a választ
