@@ -323,10 +323,13 @@ class DistributedComputingNetwork:
             raise Exception(f"All nodes failed: {errors}")
     
     async def _execute_on_node(self, node: ComputeNode, model: str,
-                              messages: List[Dict[str, str]]) -> str:
-        """Feladat végrehajtása egy csomóponton - ASZINKRON HTTP kérés"""
+                              messages: List[Dict[str, str]], retry_count: int = 0) -> str:
+        """Feladat végrehajtása egy csomóponton - ASZINKRON HTTP kérés RETRY logikával"""
         start_time = datetime.now()
-        logger.info(f"🚀 Executing task on node: {node.node_id} ({node.name}) at {node.ollama_url}")
+        max_retries = 2  # Maximum 2 újrapróbálás
+        retry_delay = 2  # 2 másodperc várakozás az újrapróbálások között
+        
+        logger.info(f"🚀 Executing task on node: {node.node_id} ({node.name}) at {node.ollama_url} (attempt {retry_count + 1}/{max_retries + 1})")
         
         try:
             # Ollama API hívás - MINDEN node-nak HTTP kérést küldünk, még a szerver node-nak is
@@ -345,40 +348,73 @@ class DistributedComputingNetwork:
             # Aszinkron HTTP kérés - ez biztosítja a valódi párhuzamos futtatást
             # FONTOS: Az Ollama automatikusan használja a GPU-t, ha elérhető
             # Nem kell külön GPU opciókat beállítani, az Ollama detektálja
-            async with aiohttp.ClientSession() as session:
-                logger.debug(f"📡 Sending async HTTP request to {url} for node {node.node_id}")
-                logger.debug(f"   Node GPU info: {node.gpu_count} GPU(s), {node.gpu_memory} MB memory")
+            # OPTIMALIZÁLT: Connection pooling és keep-alive használata
+            if self._session_pool is None or self._session_pool.closed:
+                connector = aiohttp.TCPConnector(limit=100, limit_per_host=10, keepalive_timeout=30)
+                self._session_pool = aiohttp.ClientSession(connector=connector)
+            
+            session = self._session_pool
+            logger.debug(f"📡 Sending async HTTP request to {url} for node {node.node_id}")
+            logger.debug(f"   Node GPU info: {node.gpu_count} GPU(s), {node.gpu_memory} MB memory")
+            
+            try:
+                # Növelt connect timeout (30 másodperc) - lehet, hogy a node lassan válaszol
+                async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=300, connect=30)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        result = data.get("message", {}).get("content", "") or data.get("response", "")
+                        
+                        # Válaszidő mérése
+                        response_time = (datetime.now() - start_time).total_seconds() * 1000
+                        logger.info(f"✅ Node {node.node_id} completed in {response_time:.2f}ms, response length: {len(result)} chars")
+                        if node.gpu_count > 0:
+                            logger.info(f"   💻 GPU used: {node.gpu_count} GPU(s), {node.gpu_memory} MB")
+                        self.update_node_status(node.node_id, NodeStatus.ONLINE, 
+                                               response_time=response_time)
+                        
+                        return result
+                    else:
+                        error_text = await response.text()
+                        raise Exception(f"Ollama API error: {response.status} - {error_text}")
+            except asyncio.TimeoutError:
+                # RETRY logika: ha még nem próbáltuk meg max_retries-szer, próbáljuk újra
+                if retry_count < max_retries:
+                    logger.warning(f"⏱️ Node {node.node_id} timeout (attempt {retry_count + 1}/{max_retries + 1}), retrying in {retry_delay}s...")
+                    await asyncio.sleep(retry_delay)
+                    # Ne állítsuk ERROR-ra, csak BUSY-ra
+                    self.update_node_status(node.node_id, NodeStatus.BUSY)
+                    # Újrapróbálás
+                    return await self._execute_on_node(node, model, messages, retry_count + 1)
+                else:
+                    logger.error(f"❌ Node {node.node_id} timeout after {max_retries + 1} attempts: Could not reach {url}")
+                    # Csak akkor állítsuk BUSY-ra, ha minden újrapróbálás sikertelen volt
+                    self.update_node_status(node.node_id, NodeStatus.BUSY)
+                    raise Exception(f"Node {node.node_id} timeout: Could not reach Ollama at {url} after {max_retries + 1} attempts")
+            except aiohttp.ClientError as e:
+                error_msg = str(e)
+                # RETRY logika: ha még nem próbáltuk meg max_retries-szer, próbáljuk újra
+                if retry_count < max_retries and ("timeout" in error_msg.lower() or "Connection timed out" in error_msg):
+                    logger.warning(f"🔌 Node {node.node_id} connection timeout (attempt {retry_count + 1}/{max_retries + 1}), retrying in {retry_delay}s...")
+                    await asyncio.sleep(retry_delay)
+                    # Ne állítsuk ERROR-ra, csak BUSY-ra
+                    self.update_node_status(node.node_id, NodeStatus.BUSY)
+                    # Újrapróbálás
+                    return await self._execute_on_node(node, model, messages, retry_count + 1)
                 
-                try:
-                    async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=300)) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            result = data.get("message", {}).get("content", "") or data.get("response", "")
-                            
-                            # Válaszidő mérése
-                            response_time = (datetime.now() - start_time).total_seconds() * 1000
-                            logger.info(f"✅ Node {node.node_id} completed in {response_time:.2f}ms, response length: {len(result)} chars")
-                            if node.gpu_count > 0:
-                                logger.info(f"   💻 GPU used: {node.gpu_count} GPU(s), {node.gpu_memory} MB")
-                            self.update_node_status(node.node_id, NodeStatus.ONLINE, 
-                                                   response_time=response_time)
-                            
-                            return result
-                        else:
-                            error_text = await response.text()
-                            raise Exception(f"Ollama API error: {response.status} - {error_text}")
-                except asyncio.TimeoutError:
-                    logger.error(f"❌ Node {node.node_id} timeout: Could not reach {url} within 300 seconds")
-                    self.update_node_status(node.node_id, NodeStatus.ERROR)
-                    raise Exception(f"Node {node.node_id} timeout: Could not reach Ollama at {url}")
-                except aiohttp.ClientError as e:
-                    logger.error(f"❌ Node {node.node_id} connection error: {e}")
-                    self.update_node_status(node.node_id, NodeStatus.ERROR)
-                    raise Exception(f"Node {node.node_id} connection error: {e}")
+                logger.error(f"❌ Node {node.node_id} connection error: {e}")
+                # Ne állítsuk ERROR-ra, csak BUSY-ra (lehet, hogy ideiglenes probléma)
+                self.update_node_status(node.node_id, NodeStatus.BUSY)
+                raise Exception(f"Node {node.node_id} connection error: {e}")
         
         except Exception as e:
-            logger.error(f"❌ Node {node.node_id} error: {e}")
-            self.update_node_status(node.node_id, NodeStatus.ERROR)
+            # Csak akkor állítsuk ERROR-ra, ha valódi hiba van (nem timeout/connection)
+            error_msg = str(e)
+            if "timeout" not in error_msg.lower() and "connection" not in error_msg.lower():
+                logger.error(f"❌ Node {node.node_id} error: {e}")
+                self.update_node_status(node.node_id, NodeStatus.ERROR)
+            else:
+                logger.warning(f"⚠️ Node {node.node_id} connection/timeout error: {e}")
+                self.update_node_status(node.node_id, NodeStatus.BUSY)
             raise
     
     def _combine_responses(self, responses: List[str]) -> str:
